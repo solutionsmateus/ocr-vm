@@ -1,58 +1,50 @@
 import os
-from google import genai
-import time
+import google.generativeai as genai
+from dotenv import load_dotenv
 
-API_KEY = "AIzaSyB3YlLuIqoyV2JkJSISbVPvBHlfgSYlqts"
-FILES = @artifacts
+# --- 1. Load API Key from .env file ---
+# This is the most reliable way to load your API key.
+# It looks for a file named '.env' in the same folder and loads it.
+load_dotenv() 
 
-from google import genai
-from google.genai import types
+api_key = os.getenv("GEMINI_API_KEY")
 
-# Define the function declaration for the model
-transform_ocr_xlsx = {
-    "name": "transform_ocr_xlsx",
-    "description": "Transform Images/PDFs to Spreadsheets.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "attendees": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "List of Files Transform to XLSX",
-            },
-        },
-        "required": ["attendees"],
-    },
-}
+# Check if the key was loaded successfully. If not, print an error and exit.
+if not api_key:
+    print("Error: The 'GEMINI_API_KEY' was not found.")
+    print("Please make sure you have created a '.env' file with your key in it.")
+    exit()
 
-# Configure the client and tools
-client = genai.Client()
-tools = types.Tool(function_declarations=[transform_ocr_xlsx])
-config = types.GenerateContentConfig(tools=[tools])
+# Configure the Gemini library with your key.
+genai.configure(api_key=api_key)
 
-# Send request with function declarations
-response = client.models.generate_content(
-    model="gemini-2.5-flash",
-    contents="Transforme o PDF ou Img (seja png ou jpeg) e transforme em planilha (sempre em formato markdown  com tabelas e colunas separadas com o objetivo de apenas copiar para Excel), transforme em xlsx, leia tudo que está na imagem e coloque na planilha na seguinte ordem em colunas: Empresa (Nome da Empresa), Data (Com a Data Início e Data Fim, separe por -), Data Início, Data Fim, Campanha (Adicione o Nome da Campanha + Dia da Campanha que é o dia da oferta do encarte) + Estado (que é o estado do encarte), Categoria do Produto,  Produto (Descrição, tire a referência do produto), Preço (Do Encarte), App (Preço para Usuários do App, se o Encarte falar), Cidade (Que mostrar no Encarte) e Estado (Que mostrar no Encarte, coloque somente a SIGLA DO ESTADO). Transforme uma de cada vez separando somente o que se extraiu na imagem separando em uma planilha, sempre quando mandar novamente separe somente as informações da imagem que eu mandar. Sempre verifique duas vezes antes de fazer a leitura do encarte, verifique os erros antes da transformação. Em letras maiúsculas e minúsculas, respeitando a regra da língua portuguesa.",
-    config=config,
-)
 
-# Check for a function call
-if response.candidates[0].content.parts[0].function_call:
-    function_call = response.candidates[0].content.parts[0].function_call
-    print(f"Function to call: {function_call.name}")
-    print(f"Arguments: {function_call.args}")
-    #  In a real app, you would call your function here:
-    #  result = schedule_meeting(**function_call.args)
-else:
-    print("No function call found in the response.")
+# --- 2. Set Up the Model ---
+try:
+    # We will use the 'gemini-1.5-flash-latest' model which is current and efficient.
+    model = genai.GenerativeModel(model_name='gemini-1.5-flash-latest')
+
+    # This is the detailed prompt you want to send to the AI.
+    prompt = """
+    Transforme o PDF ou Img (seja png ou jpeg) e transforme em planilha (sempre em formato markdown com tabelas e colunas separadas com o objetivo de apenas copiar para Excel).
+    Leia tudo que está na imagem e coloque na planilha na seguinte ordem em colunas:
+    Empresa (Nome da Empresa), Data (Com a Data Início e Data Fim, separe por -), Data Início, Data Fim, Campanha (Adicione o Nome da Campanha + Dia da Campanha que é o dia da oferta do encarte) + Estado (que é o estado do encarte), Categoria do Produto, Produto (Descrição, tire a referência do produto), Preço (Do Encarte), App (Preço para Usuários do App, se o Encarte falar), Cidade (Que mostrar no Encarte) e Estado (Que mostrar no Encarte, coloque somente a SIGLA DO ESTADO).
+    Transforme uma de cada vez separando somente o que se extraiu na imagem separando em uma planilha. Sempre quando mandar novamente separe somente as informações da imagem que eu mandar.
+    Sempre verifique duas vezes antes de fazer a leitura do encarte, verifique os erros antes da transformação.
+    Em letras maiúsculas e minúsculas, respeitando a regra da língua portuguesa.
+    """
+
+    # --- 3. Run the Model and Print the Response ---
+    print("Sending prompt to the Gemini API...")
+    
+    # Send the prompt to the model to generate the content.
+    response = model.generate_content(prompt)
+
+    # Print the model's text response to the console.
+    print("\n--- Model Response ---")
     print(response.text)
+    print("----------------------")
 
-
-def get_answer():
-    for i, file in enumerate(FILES):
-        file = []
-        rate = time.rate()
-        output = file(FILES)
-        #rate = time to process files
-    return f"All files was process with sucessfull rate {output} {rate}"
+# Add general error handling for any other issues that might occur.
+except Exception as e:
+    print(f"An unexpected error occurred: {e}")
