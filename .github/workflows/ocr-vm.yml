@@ -72,3 +72,8 @@ jobs:
             Write-Host "Total de arquivos em OUTPUT_DIR: $count"
             $files | Select-Object FullName, Length
           }
+
+      - name: Run Script with Gemini API
+        shell: pwsh
+        run: pyhon.exe app.py
+         
