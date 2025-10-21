@@ -7,7 +7,7 @@ on:
     branches: ["main"]
   workflow_dispatch:
   schedule:
-    - cron: '0 9 * * *'  # Agendado para rodar todos os dias às 9:00 UTC (6:00 no seu fuso)
+    - cron: '0 10 * * *'  # Agendado para rodar todos os dias às 9:00 UTC (6:00 no seu fuso)
 
 jobs:
   build:

@@ -42,16 +42,23 @@ try:
         try:
             for i in file, files:
                 print(f"Arquivos encontrados {i}")
-                myfile = genai.upload_file(file=file_paths)
+                myfiles = genai.upload_file(file=file_paths)
         except:
-            print("Not possible to scroll on paths and files.")     
+            print("Not possible to scroll on paths and files.")
+            
+    #Upload maximum 4 files on Folder in Prompt Command 
+    for files in enumerate(myfiles):
+        files = []
+        max_num = os.path.join(file=i in files, max_limit = 3)
+        for max_limit in max_num:
+            files_upload = myfiles()
+            print(f"Arquivos upados, Nº {i}")
     
-    #Model
+    #Model of AI
     model = genai.GenerativeModel(model_name='gemini-2.5-pro')
     
-    
     #Prompt to Gemini.API
-    prompt = f""" {len(myfile)}
+    prompt = f""" {len(myfiles)}
     Transforme o PDF ou Img (seja png ou jpeg) e transforme em planilha (sempre em formato markdown com tabelas e colunas separadas com o objetivo de apenas copiar para Excel).
     Leia tudo que está na imagem e coloque na planilha na seguinte ordem em colunas:
     Empresa (Nome da Empresa), Data (Com a Data Início e Data Fim, separe por -), Data Início, Data Fim, Campanha (Adicione o Nome da Campanha + Dia da Campanha que é o dia da oferta do encarte) + Estado (que é o estado do encarte), Categoria do Produto, Produto (Descrição, tire a referência do produto), Preço (Do Encarte), App (Preço para Usuários do App, se o Encarte falar), Cidade (Que mostrar no Encarte) e Estado (Que mostrar no Encarte, coloque somente a SIGLA DO ESTADO).
