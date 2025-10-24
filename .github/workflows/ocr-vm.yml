@@ -60,7 +60,8 @@ jobs:
         run: |
           Write-Host "Estrutura de pastas após o checkout:"
           Get-ChildItem -Recurse -Depth 2
-
+      #ddd
+      
       - name: Encontrar o ID da última execução do 'vm-solutions-mateus'
         id: get_latest_run 
         uses: dawidd6/action-get-latest-run@v1
