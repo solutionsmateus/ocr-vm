@@ -1,5 +1,5 @@
-google-genai==1.43.0
-undetected-chromedriver==3.5.5
-pillow==11.3.0
-pandas==2.2.3
-python-dotenv==1.0.1
+google-generativeai
+undetected-chromedriver
+pillow
+pandas
+python-dotenv

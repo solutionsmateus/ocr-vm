@@ -65,9 +65,7 @@ jobs:
         if: always()
         uses: actions/download-artifact@v4
         with:
-          # IMPORTANTE: O nome 'artifacts' deve ser o mesmo nome
-          # do artefato que você está upando em outro workflow.
-          name-pattern: encartes-18779572736
+          name-pattern: encartes-*
           if-no-files-found: warn
           path: ${{ env.ARTIFACT_FOLDER }}
 
