@@ -5,16 +5,22 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
-  workflow_dispatch:
+  workflow_dispatch: # Permite iniciar manualmente
   schedule:
-    - cron: '0 10 * * *'  # Agendado para rodar todos os dias às 9:00 UTC (6:00 no seu fuso)
+    - cron: '0 10 * * *'  # Agendado para 10:00 UTC (7:00 no seu fuso -03:00)
 
 jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: read # Alterado para 'read', pois a ação de upload não precisa de permissão de escrita no repo
+      contents: read # 'read' é suficiente, pois só lemos o repo e usamos artifacts
+
     env:
+      # Pasta onde os artifacts de *outros* workflows são baixados
+      # O script app.py usa esta variável
+      ARTIFACT_FOLDER: ./workflow-github-action
+      
+      # Esta variável parece ser do seu script antigo (deixei caso precise)
       OUTPUT_DIR: ${{ github.workspace }}/Encartes
       HTTP_UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.0 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
 
@@ -45,35 +51,51 @@ jobs:
           pip install -r requirements.txt
 
       - name: Garantir pasta de saída (Encartes)
+        # Este passo é do seu .yml original. O app.py não o utiliza.
         shell: pwsh
         run: New-Item -ItemType Directory -Force -Path "$env:OUTPUT_DIR" | Out-Null
 
-      - name: Listar arquivos (debug)
+      - name: Listar arquivos (debug inicial)
         shell: pwsh
         run: |
           Write-Host "Estrutura de pastas após o checkout:"
           Get-ChildItem -Recurse -Depth 2
 
-      - name: Baixar Artifacts com Todos os arquivos.
+      - name: Baixar Artifacts (Encartes Zip)
         if: always()
         uses: actions/download-artifact@v4
         with:
+          # IMPORTANTE: O nome 'artifacts' deve ser o mesmo nome
+          # do artefato que você está upando em outro workflow.
           name: artifacts
           if-no-files-found: warn
-          path: ./workflow-github-action
+          path: ${{ env.ARTIFACT_FOLDER }}
 
-      - name: Verificar arquivos gerados (debug)
+      - name: Verificar arquivos baixados (debug)
         shell: pwsh
         run: |
-          Write-Host "Verificando conteúdo da pasta de saída: $env:OUTPUT_DIR"
-          if (Test-Path "$env:OUTPUT_DIR") {
-            $files = Get-ChildItem "$env:OUTPUT_DIR" -Recurse -File
+          Write-Host "Verificando conteúdo da pasta de artifacts: ${{ env.ARTIFACT_FOLDER }}"
+          if (Test-Path "${{ env.ARTIFACT_FOLDER }}") {
+            $files = Get-ChildItem "${{ env.ARTIFACT_FOLDER }}" -Recurse -File
             $count = ($files | Measure-Object).Count
-            Write-Host "Total de arquivos em OUTPUT_DIR: $count"
+            Write-Host "Total de arquivos em ARTIFACT_FOLDER: $count"
             $files | Select-Object FullName, Length
           }
 
-      - name: Run Script with Gemini API
+      - name: Executar Script de Extração (app.py)
         shell: pwsh
-        run: pyhon.exe app.py
+        env:
+          # ESSENCIAL: Adiciona sua API Key dos Secrets do GitHub
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          # CORRIGIDO: 'pyhon.exe' para 'python.exe'
+          python.exe app.py
          
+      - name: Upload Resultado Compilado
+        # ESSENCIAL: Salva o arquivo final gerado pelo app.py
+        if: always() # Garante que rode mesmo se o passo anterior falhar
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultado-gemini
+          path: gemini_resultados_compilados.md # Nome do arquivo que o app.py cria
+          if-no-files-found: warn # Não falha se o arquivo não for encontrado
