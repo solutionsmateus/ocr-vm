@@ -66,7 +66,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           repository: solutionsmateus/workflow-github-action
-          workflow: vm-solutions-mateus.yml
+          workflow: vm-solutions-mateus
           name-pattern: encartes-*
           token: ${{ secrets.PAT_FOR_OTHER_REPO }}
           if-no-files-found: warn
