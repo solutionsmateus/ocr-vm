@@ -89,7 +89,6 @@ jobs:
           # ESSENCIAL: Adiciona sua API Key dos Secrets do GitHub
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          # CORRIGIDO: 'pyhon.exe' para 'python.exe'
           python.exe app.py
          
       - name: Upload Resultado Compilado
