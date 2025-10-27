@@ -66,6 +66,7 @@ jobs:
         id: download-artifact 
         uses: dawidd6/action-download-artifact@v11
         with:
+          name: encartes-18840756051-atacadao.py-attempt1
           repo: solutionsmateus/workflow-github-action
           workflow_file_name: vm-solutions-mateus.yml 
           token: ${{ secrets.PAT_FOR_OTHER_REPO }} 
