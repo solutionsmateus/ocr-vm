@@ -66,7 +66,7 @@ jobs:
         id: download-artifact 
         uses: dawidd6/action-download-artifact@v11
         with:
-          name: vm-solutions-mateus
+          name: encartes-${{ github.run_id }}-${{ matrix.script_name }}-attempt${{ github.run_attempt }}
           repo: solutionsmateus/workflow-github-action
           workflow: vm-solutions-mateus.yml 
           github_token: ${{ secrets.PAT_FOR_OTHER_REPO }} 
