@@ -64,7 +64,7 @@ jobs:
       
       - name: Encontrar o ID da última execução do 'vm-solutions-mateus'
         id: get_latest_run 
-        uses: dawidd6/action-get-latest-run@v1
+        uses: dawidd6/action-download-artifact@v1
         with:
           repo: solutionsmateus/workflow-github-action
           workflow_file_name: vm-solutions-mateus.yml 
