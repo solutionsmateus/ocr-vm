@@ -77,9 +77,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           repository: solutionsmateus/workflow-github-action
-          run_id: ${{ steps.get_latest_run.outputs.run_id }}
+          run_id: 18841512127
           github-token: ${{ secrets.PAT_FOR_OTHER_REPO }}
-          pattern: encartes-*
           if-no-files-found: warn
           path: ${{ env.ARTIFACT_FOLDER }}
 
