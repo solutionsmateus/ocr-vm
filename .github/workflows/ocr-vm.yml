@@ -62,25 +62,16 @@ jobs:
           Get-ChildItem -Recurse -Depth 2
       #ddd
       
-      - name: Encontrar o ID da última execução do 'vm-solutions-mateus'
+      - name: Baixar artifacts da ultima execução 'vm-solutions-mateus'
         id: download-artifact 
         uses: dawidd6/action-download-artifact@v11
         with:
-          name: encartes-${{ github.run_id }}-${{ matrix.script_name }}-attempt${{ github.run_attempt }}
           repo: solutionsmateus/workflow-github-action
           workflow: vm-solutions-mateus.yml 
           github_token: ${{ secrets.PAT_FOR_OTHER_REPO }} 
+          path: ${{ env.ARTIFACT_FOLDER }}
           workflow_conclusion: success
 
-      - name: Baixar Artifacts (Encartes Zip)
-        if: always()
-        uses: actions/download-artifact@v4
-        with:
-          repository: solutionsmateus/workflow-github-action
-          run_id: 18841512127
-          github-token: ${{ secrets.PAT_FOR_OTHER_REPO }}
-          if-no-files-found: warn
-          path: ${{ env.ARTIFACT_FOLDER }}
 
       - name: Verificar arquivos baixados (debug)
         shell: pwsh
