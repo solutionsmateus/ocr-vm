@@ -3,3 +3,4 @@ undetected-chromedriver
 pillow
 pandas
 python-dotenv
+packaging
