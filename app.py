@@ -30,7 +30,7 @@ safety_settings = {
 }
 
 model = genai.GenerativeModel(
-    model_name='gemini-flash-latest', # Recomendo 1.5-pro ou 1.5-flash para múltiplos arquivos
+    model_name='gemini-2.5-pro', # Recomendo 1.5-pro ou 1.5-flash para múltiplos arquivos
     safety_settings=safety_settings
 )
 
