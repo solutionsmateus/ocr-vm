@@ -142,7 +142,7 @@ def process_files():
     if not all_markdown_results:
         print("Nenhum resultado foi gerado pela API.")
     else:
-        output_filename = "gemini_resultados_compilados.md"
+        output_filename = "resultados_compilados.xlsx"
         print(f"Salvando {len(all_markdown_results)} planilhas em um único arquivo...")
         
         try:
