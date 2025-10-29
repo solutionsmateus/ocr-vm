@@ -97,6 +97,6 @@ jobs:
         if: always() # Garante que rode mesmo se o passo anterior falhar
         uses: actions/upload-artifact@v4
         with:
-          name: resultado-gemini
+          name: gemini_resultados_compilados.md
           path: gemini_resultados_compilados.md # Nome do arquivo que o app.py cria
           if-no-files-found: warn # Não falha se o arquivo não for encontrado
