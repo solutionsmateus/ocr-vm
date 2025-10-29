@@ -37,7 +37,7 @@ model = genai.GenerativeModel(
 PROMPT_TEXT = """
 Transforme o PDF ou Img (seja png ou jpeg) e transforme em planilha (sempre em formato markdown com tabelas e colunas separadas com o objetivo de apenas copiar para Excel).
 Leia tudo que está na imagem e coloque na planilha na seguinte ordem em colunas:
-Empresa (Nome da Empresa), Data (Com a Data Início e Data Fim, separe por -), Data Início, Data Fim, Campanha (Adicione o Nome da Campanha + Dia da Campanha que é o dia da oferta do encarte) + Estado (que é o estado do encarte), Categoria do Produto, Produto (Descrição, tire a referência do produto), Preço (Do Encarte), App (Preço para Usuários do App, se o Encarte falar), Cidade (Que mostrar no Encarte) e Estado (Que mostrar no Encarte, coloque somente a SIGLA DO ESTADO).
+Empresa (Nome da Empresa), Data (Com a Data Início e Data Fim, separe por -), Data Início, Data Fim, Campanha (Adicione o Nome da Campanha + Dia da Campanha que é o dia da oferta do encarte) + Estado (que é o estado do encarte), Categoria do Produto, Produto (Descrição, tire a referência do produto), Preço (Do Encarte), App (Preço para Usuários do App, se o Encarte falar), Cidade (A cidade que mostrar no Encarte, MUITO IMPORTANTE COLOCAR) e Estado (Que mostrar no Encarte, coloque somente a SIGLA DO ESTADO).
 Transforme uma de cada vez separando somente o que se extraiu na imagem separando em uma planilha. Sempre quando mandar novamente separe somente as informações da imagem que eu mandar.
 Sempre verifique duas vezes antes de fazer a leitura do encarte, verifique as erros antes da transformação.
 Em letras maiúsculas e minúsculas, respeitando a regra da língua portuguesa.
