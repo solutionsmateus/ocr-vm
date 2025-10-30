@@ -45,7 +45,7 @@ Em letras maiúsculas e minúsculas, respeitando a regra da língua portuguesa.
 
 # Extensões de arquivo 
 VALID_EXTENSIONS = ('.jpeg', '.jpg', '.png', '.pdf')
-BATCH_SIZE = 2
+BATCH_SIZE = 1
 all_markdown_results = []
 
 def process_files():
