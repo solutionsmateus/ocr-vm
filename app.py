@@ -30,7 +30,7 @@ safety_settings = {
 }
 
 model = genai.GenerativeModel(
-    model_name='gemini-flash-latest', # Recomendo 1.5-pro ou 1.5-flash para múltiplos arquivos
+    model_name='gemini-flash-latest', 
     safety_settings=safety_settings
 )
 
@@ -63,7 +63,6 @@ def process_files():
                 with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                     zip_ref.extractall(extract_directory)
                 print(f"Extraído: {zip_path} -> {extract_directory}")
-                # os.remove(zip_path) # Opcional: remover o .zip após extrair
             except zipfile.BadZipFile:
                 print(f"Erro: {zip_path} não é um arquivo zip válido ou está corrompido.")
             except Exception as e:
@@ -77,13 +76,12 @@ def process_files():
         
         if not dirs and files and root != artifact_folder:
             
-            # Filtra apenas os arquivos válidos (jpg, png, pdf)
             file_paths_to_process = [
                 os.path.join(root, f) for f in files if f.lower().endswith(VALID_EXTENSIONS)
             ]
 
             if not file_paths_to_process:
-                continue # Nenhum arquivo válido nesta pasta
+                continue 
 
             print(f"--- Processando Diretório: {root} ---")
             print(f"Encontrados {len(file_paths_to_process)} arquivos válidos.")

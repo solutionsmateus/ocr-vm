@@ -87,16 +87,14 @@ jobs:
       - name: Executar Script de Extração (app.py)
         shell: pwsh
         env:
-          # ESSENCIAL: Adiciona sua API Key dos Secrets do GitHub
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python.exe app.py
          
       - name: Upload Resultado Compilado
-        # ESSENCIAL: Salva o arquivo final gerado pelo app.py
-        if: always() # Garante que rode mesmo se o passo anterior falhar
+        if: always() 
         uses: actions/upload-artifact@v4
         with:
           name: gemini_resultados_compilados.md
-          path: gemini_resultados_compilados.md # Nome do arquivo que o app.py cria
-          if-no-files-found: warn # Não falha se o arquivo não for encontrado
+          path: gemini_resultados_compilados.md 
+          if-no-files-found: warn 
