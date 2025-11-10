@@ -35,7 +35,54 @@ model = genai.GenerativeModel(
 )
 
 PROMPT_TEXT = """
-Transforme o PDF ou Img (seja png ou jpeg) e transforme em planilha (sempre em formato markdown com tabelas e colunas separadas com o objetivo de apenas copiar para Excel). MUITO IMPORTANTE: Cada dado extraído deve estar em sua própria coluna/célula, usando o separador | do Markdown. Leia tudo que está na imagem e coloque na planilha na seguinte ordem em colunas: Empresa (Nome da Empresa), Data (Com a Data Início e Data Fim, separe por -), Data Início, Data Fim, Campanha (Adicione o Nome da Campanha + Dia da Campanha que é o dia da oferta do encarte) + Estado (que é o estado do encarte), Categoria do Produto, Produto (Descrição, tire a referência do produto), Preço (Do Encarte), App (Preço para Usuários do App, se o Encarte falar), Cidade (A cidade que mostrar no Encarte, MUITO IMPORTANTE COLOCAR) e Estado (Que mostrar no Encarte, coloque somente a SIGLA DO ESTADO). Transforme uma de cada vez separando somente o que se extraiu na imagem separando em uma planilha. Sempre quando mandar novamente separe somente as informações da imagem que eu mandar. Sempre verifique duas vezes antes de fazer a leitura do encarte, verifique as erros antes da transformação. Em letras maiúsculas e minúsculas, respeitando a regra da língua portuguesa.
+Transforme o PDF/PNG/JPEG em tabela Markdown (para copiar no Excel) e XLSX, nesta ordem exata de colunas:
+Empresa, Data, Data Início, Data Fim, Campanha, Categoria do Produto, Produto, Medida, Quantidade, Preço, App, Loja, Cidade, Estado.
+
+Regras:
+
+Data = “Data Início - Data Fim” (DD/MM/AAAA).
+
+Campanha = Nome da campanha + dia da oferta + Estado.
+
+Produto sem referência/código.
+
+Medida: detectar apenas g, mg, kg, litro, cm, metro.
+
+Quantidade: 1 se unidade; se pacote/kit (ex.: leve 2, pack 6, 2x1L), usar o nº total.
+
+Loja = todas as cidades onde o encarte atua; se várias, separar por “; ”.
+
+Cidade = usar a cidade padrão daquele estado, conforme abaixo:
+
+MARANHÃO → São Luís
+
+CEARÁ → Fortaleza
+
+PARÁ → Belém
+
+PERNAMBUCO → Recife
+
+ALAGOAS → Maceió
+
+SERGIPE → Aracaju
+
+BAHIA → Salvador
+
+PIAUÍ → Teresina
+
+PARAÍBA → João Pessoa
+
+Estado: nome do estado por extenso e EM MAIÚSCULAS (não usar sigla).
+
+Acentos e capitalização corretas.
+
+Nunca duplicar itens/linhas.
+
+Não inventar dados; se faltar no encarte, deixar em branco.
+
+Extrair somente o que aparece na imagem enviada.
+
+Verificar erros de OCR (números, preços, acentos).
 """
 
 # Extensões de arquivo 
@@ -152,3 +199,6 @@ if __name__ == "__main__":
         process_files()
     except Exception as e:
         print(f"Um erro inesperado e fatal ocorreu: {e}")
+
+
+#def identificator_files()
