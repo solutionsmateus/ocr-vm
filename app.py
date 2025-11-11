@@ -35,54 +35,105 @@ model = genai.GenerativeModel(
 )
 
 PROMPT_TEXT = """
-Transforme o PDF/PNG/JPEG em tabela Markdown (para copiar no Excel) e XLSX, nesta ordem exata de colunas:
+Transforme o PDF/PNG/JPEG em tabela Markdown (para copiar no Excel) e XLSX, usando esta ordem EXATA de colunas:
+
 Empresa, Data, Data Início, Data Fim, Campanha, Categoria do Produto, Produto, Medida, Quantidade, Preço, App, Loja, Cidade, Estado.
 
-Regras:
+✅ REGRAS OBRIGATÓRIAS
+✅ EMPRESA
 
-Data = “Data Início - Data Fim” (DD/MM/AAAA).
+Nunca substituir supermercado pela campanha.
 
-Campanha = Nome da campanha + dia da oferta + Estado.
+Permitir apenas estes valores:
 
-Produto sem referência/código.
+Assaí Atacadista
 
-Medida: detectar apenas g, mg, kg, litro, cm, metro.
+Atacadão
 
-Quantidade: 1 se unidade; se pacote/kit (ex.: leve 2, pack 6, 2x1L), usar o nº total.
+Cometa Supermercados
 
-Loja = todas as cidades onde o encarte atua; se várias, separar por “; ”.
+Frangolândia
 
-Cidade = usar a cidade padrão daquele estado, conforme abaixo:
+GBarbosa
 
-MARANHÃO → São Luís
+Atakarejo
 
-CEARÁ → Fortaleza
+Novo Atakarejo
 
-PARÁ → Belém
+Se o encarte tiver outra empresa → deixar em branco (nunca inventar).
 
-PERNAMBUCO → Recife
+✅ DATA
 
-ALAGOAS → Maceió
+Data = “Data Início - Data Fim” (DD/MM/AAAA)
 
-SERGIPE → Aracaju
+Data Início e Data Fim também devem aparecer separadamente.
 
-BAHIA → Salvador
+✅ CAMPANHA
 
-PIAUÍ → Teresina
+Formato: Nome da campanha + dia da oferta + Estado
 
-PARAÍBA → João Pessoa
+Nunca colocar campanha dentro da coluna Empresa.
 
-Estado: nome do estado por extenso e EM MAIÚSCULAS (não usar sigla).
+✅ PRODUTO
 
-Acentos e capitalização corretas.
+Sem referência/código (ex.: “cx”, “ref”, SKU, código interno)
 
-Nunca duplicar itens/linhas.
+Se o nome estiver incompleto, não inventar.
 
-Não inventar dados; se faltar no encarte, deixar em branco.
+✅ MEDIDA
 
-Extrair somente o que aparece na imagem enviada.
+Detectar apenas as unidades:
 
-Verificar erros de OCR (números, preços, acentos).
+g, mg, kg, litro, cm, metro
+(se não houver medida, deixar vazio)
+
+✅ QUANTIDADE
+
+1 quando for item unitário.
+
+Se for pack/kit/leve X/caixa → usar o número total de unidades.
+
+✅ LOJA (IMPORTANTE)
+
+Deve conter todas as CIDADES onde o encarte atua
+
+Separar múltiplas cidades com "; "
+
+Sempre com acentuação e ortografia correta:
+
+Primeira letra maiúscula, restante minúsculo
+
+Ex.: São Luís; Imperatriz; Bacabal; Maceió; Arapiraca
+
+✅ CIDADE (IMPORTANTE)
+
+Deve ser apenas a cidade padrão do estado, mesmo que haja várias lojas:
+
+ESTADO (MAIÚSCULO)	Cidade padrão (capitalizada corretamente)
+MARANHÃO	São Luís
+CEARÁ	Fortaleza
+PARÁ	Belém
+PERNAMBUCO	Recife
+ALAGOAS	Maceió
+SERGIPE	Aracaju
+BAHIA	Salvador
+PIAUÍ	Teresina
+PARAÍBA	João Pessoa
+✅ ESTADO
+
+Nome por extenso e EM MAIÚSCULAS
+
+Ex.: MARANHÃO, CEARÁ, PARÁ, PERNAMBUCO, ALAGOAS, SERGIPE, BAHIA…
+
+✅ PADRÕES GERAIS
+
+Nunca duplicar itens
+
+Não inventar dados — se não estiver no encarte, deixar em branco
+
+Corrigir acentos, erros de OCR e números
+
+Extrair somente o que existe na imagem
 """
 
 # Extensões de arquivo 
