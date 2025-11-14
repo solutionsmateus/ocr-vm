@@ -187,6 +187,7 @@ def process_files():
             for i in range(0, len(file_paths_to_process), BATCH_SIZE):
                 batch_paths = file_paths_to_process[i : i + BATCH_SIZE]
                 print(f"  Processando lote {i//BATCH_SIZE + 1} ({len(batch_paths)} arquivos)...")
+                time.sleep(1)
 
                 uploaded_files = []
                 prompt_payload = []
@@ -239,7 +240,7 @@ def process_files():
         try:
             with open(output_filename, "w", encoding="utf-8") as f:
                 f.write("\n\n---\n\n".join(all_markdown_results))
-            print(f"\n--- SUCESSO! ---")
+            print(f"SUCESSO!")
             print(f"Todos os arquivos foram processados.")
             print(f"Resultado salvo em: {output_filename}")
         except Exception as e:
