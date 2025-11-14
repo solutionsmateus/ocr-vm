@@ -194,10 +194,10 @@ def process_files():
 
                 for path in batch_paths:
                     try:
-                        print(f"    Subindo arquivo: {os.path.basename(path)}")
-                        time.sleep(1) 
+                        print(f"    Subindo arquivo: {os.path.basename(path)}") 
                         file = genai.upload_file(path=path)
                         uploaded_files.append(file)
+                        time.sleep(1)
                     except Exception as e:
                         print(f"    ERRO ao subir {path}: {e}")
                 
