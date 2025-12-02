@@ -136,37 +136,78 @@ Não inventar dados — se não estiver no encarte, deixar em branco
 Corrigir acentos, erros de OCR e números
 
 Extrair somente o que existe na imagem
+
+🛑 **AVISO CRÍTICO**: NÃO utilize o caractere PIPE (|) dentro de NENHUM campo de texto ou dado. Se precisar de separador, use vírgula ou ponto-e-vírgula.
 """
 
 # Extensões de arquivo 
 VALID_EXTENSIONS = ('.jpeg', '.jpg', '.png', '.pdf')
 BATCH_SIZE = 1
 all_markdown_results = []
-all_dataframes = [] # Novo, para armazenar os DataFrames
+all_dataframes = [] 
 
 def parse_markdown_table(markdown_text):
     """
     Analisa a string de tabela Markdown e a converte em um DataFrame do pandas.
+    Adiciona resiliência contra problemas de tokenização causados por pipes internos.
     """
+    # Nomes EXATOS das 14 colunas
+    COLUMNS = [
+        "Empresa", "Data", "Data Início", "Data Fim", "Campanha", 
+        "Categoria do Produto", "Produto", "Medida", "Quantidade", 
+        "Preço", "App", "Loja", "Cidade", "Estado"
+    ]
+    
     try:
-        # A tabela Markdown é lida como CSV com separador |
-        # Usamos io.StringIO para tratar a string como um arquivo
-        data = io.StringIO(markdown_text)
+        # Divide o texto em linhas
+        lines = markdown_text.strip().split('\n')
         
-        # Lê a tabela, ignorando a primeira linha (cabeçalho) e a segunda linha (separador Markdown |---|)
-        # O cabeçalho real é inferido pelas colunas.
-        df = pd.read_csv(data, sep='|', skiprows=[2], skipinitialspace=True)
+        # Filtra as linhas:
+        # 1. Remove a primeira linha (cabeçalho) e a segunda linha (separador Markdown |---|)
+        # 2. Mantém apenas as linhas que parecem ser dados (contém o separador |)
+        data_lines = [line for line in lines[2:] if line.strip().startswith('|')]
         
-        # Limpa o DataFrame
-        # 1. Remove espaços em branco antes e depois dos nomes das colunas
-        df.columns = df.columns.str.strip()
-        # 2. Remove a primeira e a última coluna (que geralmente são vazias devido ao formato |col1|col2|)
+        # Junta as linhas de dados novamente em uma única string
+        cleaned_data = '\n'.join(data_lines)
+        data = io.StringIO(cleaned_data)
+        
+        # Tenta ler a tabela. Usamos 'header=None' e 'engine='python'' para maior tolerância.
+        df = pd.read_csv(
+            data, 
+            sep='|', 
+            skipinitialspace=True, 
+            header=None,
+            on_bad_lines='warn', # Avisa sobre linhas problemáticas, mas tenta continuar
+            engine='python' 
+        )
+        
+        # Limpeza pós-leitura
+        # Remove a primeira e a última coluna (vazias devido ao formato |col1|col2|)
         df = df.iloc[:, 1:-1]
         
-        # 3. Remove linhas que são todas NaN (podem ser linhas vazias residuais)
+        # Define os nomes das colunas
+        if df.shape[1] == len(COLUMNS):
+            df.columns = COLUMNS
+        else:
+            print(f"AVISO CRÍTICO: Colunas esperadas ({len(COLUMNS)}) != Colunas detectadas ({df.shape[1]}). Aplicando reajuste forçado.")
+            # Se o número de colunas não bater, tentamos prosseguir descartando colunas extras
+            if df.shape[1] > len(COLUMNS):
+                df = df.iloc[:, :len(COLUMNS)]
+                df.columns = COLUMNS
+                print("Reajuste forçado aplicado: colunas extras descartadas.")
+            else:
+                 # Se houver menos colunas, preenchemos com NaN no final
+                missing_cols = len(COLUMNS) - df.shape[1]
+                for i in range(missing_cols):
+                    df[f'COL_MISSING_{i}'] = None
+                df.columns = COLUMNS
+                print("Reajuste forçado aplicado: colunas faltantes adicionadas.")
+            
+        # Remove linhas que são todas NaN (podem ser linhas vazias residuais)
         df.dropna(how='all', inplace=True)
         
         return df
+        
     except Exception as e:
         print(f"AVISO: Não foi possível converter a tabela Markdown em DataFrame. Erro: {e}")
         return None
@@ -270,6 +311,11 @@ def process_files():
                         all_dataframes.append(df)
                         print(f"    Resposta recebida e convertida em DataFrame.")
                     else:
+                        # Se a conversão falhar, ainda tentamos printar a resposta bruta para debug
+                        print(f"    Resposta bruta do Gemini (pode conter erro de formatação):")
+                        print("--- INÍCIO DA RESPOSTA BRUTA ---")
+                        print(response.text)
+                        print("--- FIM DA RESPOSTA BRUTA ---")
                         print(f"    Resposta recebida, mas falhou na conversão para DataFrame.")
                     
                 except Exception as e:
