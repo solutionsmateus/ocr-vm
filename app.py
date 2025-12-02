@@ -5,6 +5,8 @@ import time
 from dotenv import load_dotenv
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
+import pandas as pd
+import io
 
 # --- 1. Configuração Inicial ---
 load_dotenv()
@@ -101,7 +103,7 @@ Separar múltiplas cidades com "; "
 
 Sempre com acentuação e ortografia correta:
 
-Primeira letra maiúscula, restante minúsculo
+Primeira letra maiúscula, restante minúscula
 
 Ex.: São Luís; Imperatriz; Bacabal; Maceió; Arapiraca
 
@@ -140,6 +142,55 @@ Extrair somente o que existe na imagem
 VALID_EXTENSIONS = ('.jpeg', '.jpg', '.png', '.pdf')
 BATCH_SIZE = 1
 all_markdown_results = []
+all_dataframes = [] # Novo, para armazenar os DataFrames
+
+def parse_markdown_table(markdown_text):
+    """
+    Analisa a string de tabela Markdown e a converte em um DataFrame do pandas.
+    """
+    try:
+        # A tabela Markdown é lida como CSV com separador |
+        # Usamos io.StringIO para tratar a string como um arquivo
+        data = io.StringIO(markdown_text)
+        
+        # Lê a tabela, ignorando a primeira linha (cabeçalho) e a segunda linha (separador Markdown |---|)
+        # O cabeçalho real é inferido pelas colunas.
+        df = pd.read_csv(data, sep='|', skiprows=[2], skipinitialspace=True)
+        
+        # Limpa o DataFrame
+        # 1. Remove espaços em branco antes e depois dos nomes das colunas
+        df.columns = df.columns.str.strip()
+        # 2. Remove a primeira e a última coluna (que geralmente são vazias devido ao formato |col1|col2|)
+        df = df.iloc[:, 1:-1]
+        
+        # 3. Remove linhas que são todas NaN (podem ser linhas vazias residuais)
+        df.dropna(how='all', inplace=True)
+        
+        return df
+    except Exception as e:
+        print(f"AVISO: Não foi possível converter a tabela Markdown em DataFrame. Erro: {e}")
+        return None
+
+def save_dataframes_to_excel(dataframes, output_filename="gemini_resultados_compilados.xlsx"):
+    """
+    Compila todos os DataFrames em um único arquivo XLSX.
+    """
+    if not dataframes:
+        print("Nenhum DataFrame para salvar.")
+        return
+
+    try:
+        # Concatenar todos os DataFrames em um único
+        final_df = pd.concat(dataframes, ignore_index=True)
+        
+        # Salva em XLSX
+        final_df.to_excel(output_filename, index=False, engine='openpyxl')
+        
+        print(f"SUCESSO!")
+        print(f"Todos os arquivos foram processados.")
+        print(f"Resultado salvo em: {output_filename}")
+    except Exception as e:
+        print(f"ERRO ao salvar o arquivo final XLSX: {e}")
 
 def process_files():
     """
@@ -169,7 +220,6 @@ def process_files():
 
     print("Iniciando varredura das pastas de supermercados...")
     
-
     for root, dirs, files in os.walk(artifact_folder, topdown=False):
         
         if not dirs and files and root != artifact_folder:
@@ -214,9 +264,14 @@ def process_files():
                     print(f"    Enviando {len(uploaded_files)} arquivos para o Gemini...")
                     response = model.generate_content(prompt_payload)
                     
-                    all_markdown_results.append(response.text)
-                    print(f"    Resposta recebida e armazenada.")
-                
+                    # 💡 NOVO: Converte a resposta Markdown para DataFrame e armazena
+                    df = parse_markdown_table(response.text)
+                    if df is not None:
+                        all_dataframes.append(df)
+                        print(f"    Resposta recebida e convertida em DataFrame.")
+                    else:
+                        print(f"    Resposta recebida, mas falhou na conversão para DataFrame.")
+                    
                 except Exception as e:
                     print(f"    ERRO ao chamar a API Gemini: {e}")
                 
@@ -231,26 +286,26 @@ def process_files():
             
             print(f"--- Diretório {root} concluído ---\n")
 
-    if not all_markdown_results:
-        print("Nenhum resultado foi gerado pela API.")
+    if not all_dataframes:
+        print("Nenhum resultado foi gerado pela API ou convertido para DataFrame.")
     else:
-        output_filename = "gemini_resultados_compilados.md"
-        print(f"Salvando {len(all_markdown_results)} planilhas em um único arquivo...")
-        
-        try:
-            with open(output_filename, "w", encoding="utf-8") as f:
-                f.write("\n\n---\n\n".join(all_markdown_results))
-            print(f"SUCESSO!")
-            print(f"Todos os arquivos foram processados.")
-            print(f"Resultado salvo em: {output_filename}")
-        except Exception as e:
-            print(f"ERRO ao salvar o arquivo final: {e}")
+        # 💡 NOVO: Chamada para salvar em XLSX
+        save_dataframes_to_excel(all_dataframes)
+
 
 if __name__ == "__main__":
+    # Verificação de dependências
+    try:
+        import pandas as pd
+        import openpyxl # openpyxl é o motor padrão para escrita de XLSX pelo pandas
+    except ImportError:
+        print("\n--- DEPENDÊNCIA FALTANDO ---")
+        print("Para salvar em XLSX, você precisa instalar pandas e openpyxl.")
+        print("Execute o comando:")
+        print("pip install pandas openpyxl")
+        exit()
+
     try:
         process_files()
     except Exception as e:
         print(f"Um erro inesperado e fatal ocorreu: {e}")
-
-
-#def identificator_files()
