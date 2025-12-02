@@ -7,7 +7,7 @@ on:
     branches: ["main"]
   workflow_dispatch: # Permite iniciar manualmente
   schedule:
-   - cron: '0 13 * * *'  # Agendado para 10:00 - MANHÃ 
+   - cron: '0 14 * * *'  # Agendado para 11:00 - MANHÃ 
 
 jobs:
   build:
