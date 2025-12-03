@@ -10,31 +10,51 @@ import io
 
 # --- 1. Configuração Inicial ---
 load_dotenv()
-api_key = os.getenv("GEMINI_API_KEY")
 artifact_folder = os.environ.get("ARTIFACT_FOLDER", "./workflow-github-action")
 
-if not api_key:
-    print("Erro: A 'GEMINI_API_KEY' não foi encontrada.")
-    print("Por favor, crie um arquivo '.env' com sua chave.")
-    exit()
+# 💡 NOVO: Carrega as chaves dedicadas e a chave padrão (fallback) do ambiente
+DEFAULT_API_KEY = os.getenv("GEMINI_API_KEY")
 
-try:
-    genai.configure(api_key=api_key)
-except Exception as e:
-    print(f"Erro ao configurar a API Gemini: {e}")
-    exit()
-
-safety_settings = {
-    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+# Mapeamento de Chaves de Supermercado (O nome do token deve ser parte do nome da pasta)
+# Ex: A pasta "Assaí Atacadista" usa a chave ASSAI_KEY.
+KEY_MAPPING = {
+    "ASSAI": os.getenv("ASSAI_KEY"),
+    "ATACADAO": os.getenv("ATACADAO_KEY"),
+    "ATAKAREJO": os.getenv("ATAKAREJO_KEY"),
+    "COMETA": os.getenv("COMETA_KEY"),
+    "FRANGOLANDIA": os.getenv("FRANGOLANDIA_KEY"),
+    "GBARBOSA": os.getenv("GBARBOSA_KEY"),
+    "NOVO_ATACAREJO": os.getenv("NOVO_ATACAREJO_KEY"),
 }
 
-model = genai.GenerativeModel(
-    model_name='gemini-flash-latest', 
-    safety_settings=safety_settings
-)
+# Limpa o mapeamento removendo chaves vazias e garante o uso em maiúsculas para busca
+CLEANED_KEY_MAPPING = {k: v for k, v in KEY_MAPPING.items() if v}
+
+if not DEFAULT_API_KEY and not CLEANED_KEY_MAPPING:
+    print("Erro: Nenhuma chave API Gemini (padrão ou dedicada) foi encontrada. Saindo.")
+    exit()
+
+# 💡 NOVO: Função para configurar o cliente Gemini de forma dinâmica
+def get_gemini_model(api_key):
+    """Configura o cliente Gemini com a chave fornecida e retorna a instância do modelo."""
+    if not api_key:
+        raise ValueError("Chave API não fornecida.")
+    
+    # ⚠️ Esta linha reconfigura a API GLOBALMENTE para o processo atual
+    genai.configure(api_key=api_key) 
+    
+    safety_settings = {
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+    }
+
+    # O objeto model retornado usará a configuração mais recente
+    return genai.GenerativeModel(
+        model_name='gemini-flash-latest', 
+        safety_settings=safety_settings
+    )
 
 PROMPT_TEXT = """
 Transforme o PDF/PNG/JPEG em tabela Markdown (para copiar no Excel) e XLSX, usando esta ordem EXATA de colunas:
@@ -143,13 +163,11 @@ Extrair somente o que existe na imagem
 # Extensões de arquivo 
 VALID_EXTENSIONS = ('.jpeg', '.jpg', '.png', '.pdf')
 BATCH_SIZE = 1
-all_markdown_results = []
 all_dataframes = [] 
 
 def parse_markdown_table(markdown_text):
     """
     Analisa a string de tabela Markdown e a converte em um DataFrame do pandas.
-    Adiciona resiliência contra problemas de tokenização causados por pipes internos.
     """
     # Nomes EXATOS das 14 colunas
     COLUMNS = [
@@ -159,51 +177,37 @@ def parse_markdown_table(markdown_text):
     ]
     
     try:
-        # Divide o texto em linhas
         lines = markdown_text.strip().split('\n')
-        
-        # Filtra as linhas:
-        # 1. Remove a primeira linha (cabeçalho) e a segunda linha (separador Markdown |---|)
-        # 2. Mantém apenas as linhas que parecem ser dados (contém o separador |)
         data_lines = [line for line in lines[2:] if line.strip().startswith('|')]
-        
-        # Junta as linhas de dados novamente em uma única string
         cleaned_data = '\n'.join(data_lines)
         data = io.StringIO(cleaned_data)
         
-        # Tenta ler a tabela. Usamos 'header=None' e 'engine='python'' para maior tolerância.
         df = pd.read_csv(
             data, 
             sep='|', 
             skipinitialspace=True, 
             header=None,
-            on_bad_lines='warn', # Avisa sobre linhas problemáticas, mas tenta continuar
+            on_bad_lines='warn', 
             engine='python' 
         )
         
-        # Limpeza pós-leitura
-        # Remove a primeira e a última coluna (vazias devido ao formato |col1|col2|)
         df = df.iloc[:, 1:-1]
         
-        # Define os nomes das colunas
         if df.shape[1] == len(COLUMNS):
             df.columns = COLUMNS
         else:
             print(f"AVISO CRÍTICO: Colunas esperadas ({len(COLUMNS)}) != Colunas detectadas ({df.shape[1]}). Aplicando reajuste forçado.")
-            # Se o número de colunas não bater, tentamos prosseguir descartando colunas extras
             if df.shape[1] > len(COLUMNS):
                 df = df.iloc[:, :len(COLUMNS)]
                 df.columns = COLUMNS
                 print("Reajuste forçado aplicado: colunas extras descartadas.")
             else:
-                 # Se houver menos colunas, preenchemos com NaN no final
                 missing_cols = len(COLUMNS) - df.shape[1]
                 for i in range(missing_cols):
                     df[f'COL_MISSING_{i}'] = None
                 df.columns = COLUMNS
                 print("Reajuste forçado aplicado: colunas faltantes adicionadas.")
             
-        # Remove linhas que são todas NaN (podem ser linhas vazias residuais)
         df.dropna(how='all', inplace=True)
         
         return df
@@ -221,10 +225,7 @@ def save_dataframes_to_excel(dataframes, output_filename="gemini_resultados_comp
         return
 
     try:
-        # Concatenar todos os DataFrames em um único
         final_df = pd.concat(dataframes, ignore_index=True)
-        
-        # Salva em XLSX
         final_df.to_excel(output_filename, index=False, engine='openpyxl')
         
         print(f"SUCESSO!")
@@ -237,8 +238,24 @@ def process_files():
     """
     Função principal para executar todo o fluxo de trabalho.
     """
+    global all_dataframes # Para garantir que a lista seja modificada globalmente
+
+    # Inicializa com a primeira chave disponível
+    current_api_key = next(iter(CLEANED_KEY_MAPPING.values()), DEFAULT_API_KEY)
     
-    # 2. Extrair todos os Zips
+    if not current_api_key:
+        print("Erro: Nenhuma chave API disponível para começar. Saindo.")
+        exit()
+        
+    try:
+        current_model = get_gemini_model(current_api_key)
+        print(f"Configuração inicial com a chave: {'DEDICADA' if current_api_key != DEFAULT_API_KEY else 'PADRÃO (Fallback)'}.")
+    except Exception as e:
+        print(f"Erro inicial ao configurar a primeira chave: {e}. Saindo.")
+        exit()
+
+
+    # 2. Extrair todos os Zips (lógica inalterada)
     print(f"Procurando por arquivos .zip em {artifact_folder}...")
     zip_pattern = os.path.join(artifact_folder, "**", "*.zip")
     zip_files = glob.glob(zip_pattern, recursive=True)
@@ -265,6 +282,36 @@ def process_files():
         
         if not dirs and files and root != artifact_folder:
             
+            # --- 💡 Lógica de Rotação de Chaves ---
+            # 1. Normaliza o nome da pasta para busca (ex: "Assaí Atacadista" -> "ASSAIATACADISTA")
+            supermarket_folder_name = os.path.basename(root).upper().replace(" ", "").replace("-", "")
+            selected_key = None
+            
+            # 2. Busca a chave no mapeamento (ex: se o nome da pasta contém "ASSAI")
+            for key_name, api_key_value in CLEANED_KEY_MAPPING.items():
+                if key_name in supermarket_folder_name:
+                    selected_key = api_key_value
+                    break
+            
+            # 3. Define a chave a ser usada: dedicada ou padrão (fallback)
+            key_to_use = selected_key if selected_key else DEFAULT_API_KEY
+            
+            # 4. Reconfigura o cliente SOMENTE se a chave for diferente da que está sendo usada
+            if key_to_use and key_to_use != current_api_key:
+                try:
+                    current_model = get_gemini_model(key_to_use)
+                    current_api_key = key_to_use
+                    key_source = "DEDICADA" if selected_key else "PADRÃO (Fallback)"
+                    print(f"🔑 Chave API alterada para: {os.path.basename(root)} ({key_source}).")
+                except Exception as e:
+                    print(f"⚠️ Erro ao configurar nova chave para {os.path.basename(root)}: {e}. Mantendo a chave anterior.")
+                    # Tenta fallback para a chave padrão se a dedicada falhar (se houver)
+                    if current_api_key != DEFAULT_API_KEY and DEFAULT_API_KEY:
+                        current_model = get_gemini_model(DEFAULT_API_KEY)
+                        current_api_key = DEFAULT_API_KEY
+                        print("Tentativa de fallback para Chave Padrão.")
+            # --- Fim da Lógica de Rotação ---
+
             file_paths_to_process = [
                 os.path.join(root, f) for f in files if f.lower().endswith(VALID_EXTENSIONS)
             ]
@@ -286,7 +333,8 @@ def process_files():
                 for path in batch_paths:
                     try:
                         print(f"    Subindo arquivo: {os.path.basename(path)}") 
-                        file = genai.upload_file(path=path)
+                        # O upload usa a configuração da API mais recente
+                        file = genai.upload_file(path=path) 
                         uploaded_files.append(file)
                         time.sleep(1)
                     except Exception as e:
@@ -303,15 +351,14 @@ def process_files():
 
                 try:
                     print(f"    Enviando {len(uploaded_files)} arquivos para o Gemini...")
-                    response = model.generate_content(prompt_payload)
+                    # A chamada generate_content usa o 'current_model'
+                    response = current_model.generate_content(prompt_payload) 
                     
-                    # 💡 NOVO: Converte a resposta Markdown para DataFrame e armazena
                     df = parse_markdown_table(response.text)
                     if df is not None:
                         all_dataframes.append(df)
                         print(f"    Resposta recebida e convertida em DataFrame.")
                     else:
-                        # Se a conversão falhar, ainda tentamos printar a resposta bruta para debug
                         print(f"    Resposta bruta do Gemini (pode conter erro de formatação):")
                         print("--- INÍCIO DA RESPOSTA BRUTA ---")
                         print(response.text)
@@ -325,7 +372,7 @@ def process_files():
                     print("    Limpando arquivos do servidor Gemini...")
                     for file in uploaded_files:
                         try:
-                            time.sleep(1) # Pausa para evitar limite de taxa
+                            time.sleep(1) 
                             genai.delete_file(file.name)
                         except Exception as e:
                             print(f"    Erro ao deletar arquivo {file.name}: {e}")
@@ -335,7 +382,6 @@ def process_files():
     if not all_dataframes:
         print("Nenhum resultado foi gerado pela API ou convertido para DataFrame.")
     else:
-        # 💡 NOVO: Chamada para salvar em XLSX
         save_dataframes_to_excel(all_dataframes)
 
 
@@ -343,7 +389,7 @@ if __name__ == "__main__":
     # Verificação de dependências
     try:
         import pandas as pd
-        import openpyxl # openpyxl é o motor padrão para escrita de XLSX pelo pandas
+        import openpyxl 
     except ImportError:
         print("\n--- DEPENDÊNCIA FALTANDO ---")
         print("Para salvar em XLSX, você precisa instalar pandas e openpyxl.")
