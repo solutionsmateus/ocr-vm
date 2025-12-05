@@ -106,7 +106,7 @@ Se o nome estiver incompleto, não inventar.
 
 Detectar apenas as unidades:
 
-g, mg, kg, litro, cm, metro
+g, mg, kg, litro, cm, metro, ou unid (se o produto não tiver nenhuma medida).
 (se não houver medida, deixar vazio)
 
 ✅ QUANTIDADE
@@ -138,7 +138,7 @@ PARÁ	Belém
 PERNAMBUCO	Recife
 ALAGOAS	Maceió
 SERGIPE	Aracaju
-BAHIA	Salvador
+BAHIA	Vitória da Conquista ou Salvador
 PIAUÍ	Teresina
 PARAÍBA	João Pessoa
 ✅ ESTADO
