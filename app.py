@@ -15,8 +15,6 @@ artifact_folder = os.environ.get("ARTIFACT_FOLDER", "./workflow-github-action")
 # 💡 NOVO: Carrega as chaves dedicadas e a chave padrão (fallback) do ambiente
 DEFAULT_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# Mapeamento de Chaves de Supermercado (O nome do token deve ser parte do nome da pasta)
-# Ex: A pasta "Assaí Atacadista" usa a chave ASSAI_KEY.
 KEY_MAPPING = {
     "ASSAI": os.getenv("ASSAI_KEY"),
     "ATACADAO": os.getenv("ATACADAO_KEY"),
@@ -40,7 +38,7 @@ def get_gemini_model(api_key):
     if not api_key:
         raise ValueError("Chave API não fornecida.")
     
-    # ⚠️ Esta linha reconfigura a API GLOBALMENTE para o processo atual
+    # Esta linha reconfigura a API GLOBALMENTE para o processo atual
     genai.configure(api_key=api_key) 
     
     safety_settings = {
