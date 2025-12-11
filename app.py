@@ -8,11 +8,9 @@ from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import pandas as pd
 import io
 
-# --- 1. Configuração Inicial ---
 load_dotenv()
 artifact_folder = os.environ.get("ARTIFACT_FOLDER", "./workflow-github-action")
 
-# 💡 NOVO: Carrega as chaves dedicadas e a chave padrão (fallback) do ambiente
 DEFAULT_API_KEY = os.getenv("GEMINI_API_KEY")
 
 KEY_MAPPING = {
@@ -25,14 +23,12 @@ KEY_MAPPING = {
     "NOVO_ATACAREJO": os.getenv("NOVO_ATACAREJO_KEY"),
 }
 
-# Limpa o mapeamento removendo chaves vazias e garante o uso em maiúsculas para busca
 CLEANED_KEY_MAPPING = {k: v for k, v in KEY_MAPPING.items() if v}
 
 if not DEFAULT_API_KEY and not CLEANED_KEY_MAPPING:
     print("Erro: Nenhuma chave API Gemini (padrão ou dedicada) foi encontrada. Saindo.")
     exit()
 
-# 💡 NOVO: Função para configurar o cliente Gemini de forma dinâmica
 def get_gemini_model(api_key):
     """Configura o cliente Gemini com a chave fornecida e retorna a instância do modelo."""
     if not api_key:
@@ -280,7 +276,6 @@ def process_files():
         
         if not dirs and files and root != artifact_folder:
             
-            # --- 💡 Lógica de Rotação de Chaves ---
             # 1. Normaliza o nome da pasta para busca (ex: "Assaí Atacadista" -> "ASSAIATACADISTA")
             supermarket_folder_name = os.path.basename(root).upper().replace(" ", "").replace("-", "")
             selected_key = None
@@ -300,9 +295,9 @@ def process_files():
                     current_model = get_gemini_model(key_to_use)
                     current_api_key = key_to_use
                     key_source = "DEDICADA" if selected_key else "PADRÃO (Fallback)"
-                    print(f"🔑 Chave API alterada para: {os.path.basename(root)} ({key_source}).")
+                    print(f"Chave API alterada para: {os.path.basename(root)} ({key_source}).")
                 except Exception as e:
-                    print(f"⚠️ Erro ao configurar nova chave para {os.path.basename(root)}: {e}. Mantendo a chave anterior.")
+                    print(f"Erro ao configurar nova chave para {os.path.basename(root)}: {e}. Mantendo a chave anterior.")
                     # Tenta fallback para a chave padrão se a dedicada falhar (se houver)
                     if current_api_key != DEFAULT_API_KEY and DEFAULT_API_KEY:
                         current_model = get_gemini_model(DEFAULT_API_KEY)
