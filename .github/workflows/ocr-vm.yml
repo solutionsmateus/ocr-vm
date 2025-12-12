@@ -49,7 +49,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          # 💡 Adicionado para suportar a funcionalidade XLSX
+          # Adicionado para suportar a funcionalidade XLSX
           pip install pandas openpyxl
 
       - name: Garantir pasta de saída (Encartes)
@@ -90,13 +90,6 @@ jobs:
         shell: pwsh
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          ASSAI_KEY: ${{ secrets.ASSAI_KEY }}
-          ATACADAO_KEY: ${{ secrets.ATACADAO_KEY }}
-          ATAKAREJO_KEY: ${{ secrets.ATAKAREJO_KEY }}
-          COMETA_KEY: ${{ secrets.COMETA_KEY }}
-          FRANGOLANDIA_KEY: ${{ secrets.FRANGOLANDIA_KEY }}
-          GBARBOSA_KEY: ${{ secrets.GBARBOSA_KEY }}
-          NOVO_ATACAREJO_KEY: ${{ secrets.NOVO_ATACAREJO_KEY }}
         run: |
           python.exe app.py
          
