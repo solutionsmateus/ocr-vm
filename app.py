@@ -32,7 +32,7 @@ safety_settings = {
 }
 
 model = genai.GenerativeModel(
-    model_name='gemini-2.5-latest', 
+    model_name='gemini-flash-latest', 
     safety_settings=safety_settings
 )
 
