@@ -32,7 +32,7 @@ safety_settings = {
 }
 
 model = genai.GenerativeModel(
-    model_name='gemini-flash-latest', 
+    model_name='gemini-2.5-latest', 
     safety_settings=safety_settings
 )
 
@@ -305,7 +305,7 @@ def process_files():
                     print(f"    Enviando {len(uploaded_files)} arquivos para o Gemini...")
                     response = model.generate_content(prompt_payload)
                     
-                    # 💡 NOVO: Converte a resposta Markdown para DataFrame e armazena
+                    # NOVO: Converte a resposta Markdown para DataFrame e armazena
                     df = parse_markdown_table(response.text)
                     if df is not None:
                         all_dataframes.append(df)
@@ -335,7 +335,7 @@ def process_files():
     if not all_dataframes:
         print("Nenhum resultado foi gerado pela API ou convertido para DataFrame.")
     else:
-        # 💡 NOVO: Chamada para salvar em XLSX
+        # NOVO: Chamada para salvar em XLSX
         save_dataframes_to_excel(all_dataframes)
 
 
