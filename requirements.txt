@@ -1,4 +1,4 @@
-google-generativeai
+google-genai
 undetected-chromedriver
 pillow
 pandas

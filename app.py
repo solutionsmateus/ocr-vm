@@ -3,14 +3,14 @@ import glob
 import zipfile
 import time
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import pandas as pd
 import io
 
 # --- 1. Configuração Inicial ---
 load_dotenv()
-api_key = os.getenv("GEMINI_API_KEY")
+api_key = "AIzaSyA5_hcdJ4Ys4hkN3UraWMm2sjT3sLWkhoQ"
 artifact_folder = os.environ.get("ARTIFACT_FOLDER", "./workflow-github-action")
 
 if not api_key:
@@ -137,7 +137,7 @@ Corrigir acentos, erros de OCR e números
 
 Extrair somente o que existe na imagem
 
-🛑 **AVISO CRÍTICO**: NÃO utilize o caractere PIPE (|) dentro de NENHUM campo de texto ou dado. Se precisar de separador, use vírgula ou ponto-e-vírgula.
+**AVISO CRÍTICO**: NÃO utilize o caractere PIPE (|) dentro de NENHUM campo de texto ou dado. Se precisar de separador, use vírgula ou ponto-e-vírgula.
 """
 
 # Extensões de arquivo 
@@ -208,10 +208,8 @@ def save_dataframes_to_excel(dataframes, output_filename="gemini_resultados_comp
         return
 
     try:
-        # Concatenar todos os DataFrames em um único
         final_df = pd.concat(dataframes, ignore_index=True)
         
-        # Salva em XLSX
         final_df.to_excel(output_filename, index=False, engine='openpyxl')
         
         print(f"SUCESSO!")
@@ -295,7 +293,7 @@ def process_files():
                         print(f"    Resposta recebida e convertida em DataFrame.")
                     else:
                         # Se a conversão falhar, ainda tentamos printar a resposta bruta para debug
-                        print(f"    Resposta bruta do Gemini (pode conter erro de formatação):")
+                        print(f"Resposta bruta do Gemini (pode conter erro de formatação):")
                         print("--- INÍCIO DA RESPOSTA BRUTA ---")
                         print(response.text)
                         print("--- FIM DA RESPOSTA BRUTA ---")
