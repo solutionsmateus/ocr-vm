@@ -147,10 +147,6 @@ all_markdown_results = []
 all_dataframes = [] 
 
 def parse_markdown_table(markdown_text):
-    """
-    Analisa a string de tabela Markdown e a converte em um DataFrame do pandas.
-    Adiciona resiliência contra problemas de tokenização causados por pipes internos.
-    """
     # Nomes EXATOS das 14 colunas
     COLUMNS = [
         "Empresa", "Data", "Data Início", "Data Fim", "Campanha", 
@@ -159,15 +155,9 @@ def parse_markdown_table(markdown_text):
     ]
     
     try:
-        # Divide o texto em linhas
         lines = markdown_text.strip().split('\n')
-        
-        # Filtra as linhas:
-        # 1. Remove a primeira linha (cabeçalho) e a segunda linha (separador Markdown |---|)
-        # 2. Mantém apenas as linhas que parecem ser dados (contém o separador |)
         data_lines = [line for line in lines[2:] if line.strip().startswith('|')]
         
-        # Junta as linhas de dados novamente em uma única string
         cleaned_data = '\n'.join(data_lines)
         data = io.StringIO(cleaned_data)
         
@@ -213,9 +203,6 @@ def parse_markdown_table(markdown_text):
         return None
 
 def save_dataframes_to_excel(dataframes, output_filename="gemini_resultados_compilados.xlsx"):
-    """
-    Compila todos os DataFrames em um único arquivo XLSX.
-    """
     if not dataframes:
         print("Nenhum DataFrame para salvar.")
         return
@@ -234,10 +221,6 @@ def save_dataframes_to_excel(dataframes, output_filename="gemini_resultados_comp
         print(f"ERRO ao salvar o arquivo final XLSX: {e}")
 
 def process_files():
-    """
-    Função principal para executar todo o fluxo de trabalho.
-    """
-    
     # 2. Extrair todos os Zips
     print(f"Procurando por arquivos .zip em {artifact_folder}...")
     zip_pattern = os.path.join(artifact_folder, "**", "*.zip")
