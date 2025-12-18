@@ -4,7 +4,7 @@ import zipfile
 import time
 from dotenv import load_dotenv
 from google import genai
-from google.genai import HarmCategory, HarmBlockThreshold
+from google.genai.types import HarmCategory, HarmBlockThreshold
 import pandas as pd
 import io
 
