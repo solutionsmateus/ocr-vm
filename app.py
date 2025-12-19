@@ -13,18 +13,14 @@ load_dotenv()
 api_key = "AIzaSyA5_hcdJ4Ys4hkN3UraWMm2sjT3sLWkhoQ"
 artifact_folder = os.environ.get("ARTIFACT_FOLDER", "./workflow-github-action")
 
-client = genai.Client()
 
 if not api_key:
     print("Erro: A 'GEMINI_API_KEY' não foi encontrada.")
     print("Por favor, crie um arquivo '.env' com sua chave.")
     exit()
 
-try:
-    genai.configure(api_key=api_key)
-except Exception as e:
-    print(f"Erro ao configurar a API Gemini: {e}")
-    exit()
+    
+client = genai.Client(api_key=api_key)
 
 safety_settings = {
     HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
