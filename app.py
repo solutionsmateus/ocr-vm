@@ -281,6 +281,7 @@ def process_files():
                     response = client.models.generate_content(
                         model=MODEL_NAME,
                         contents=prompt_payload,
+                        safety_settings=safety_settings,
                     )
                     
                     # NOVO: Converte a resposta Markdown para DataFrame e armazena
