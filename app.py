@@ -166,8 +166,6 @@ def parse_markdown_table(markdown_text):
             engine='python' 
         )
         
-        # Limpeza pós-leitura
-        # Remove a primeira e a última coluna (vazias devido ao formato |col1|col2|)
         df = df.iloc[:, 1:-1]
         
         # Define os nomes das colunas
@@ -279,6 +277,7 @@ def process_files():
 
                 try:
                     print(f"    Enviando {len(uploaded_files)} arquivos para o Gemini...")
+                    
                     response = client.models.generate_content(
                         model=MODEL_NAME,
                         contents=prompt_payload,
