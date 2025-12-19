@@ -29,7 +29,7 @@ safety_settings = {
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
 }
 
-model = genai.GenerativeModel(
+model = genai.version(
     model_name='gemini-flash-latest', 
     safety_settings=safety_settings
 )
