@@ -19,7 +19,6 @@ if not api_key:
     print("Por favor, crie um arquivo '.env' com sua chave.")
     exit()
 
-    
 client = genai.Client(api_key=api_key)
 
 safety_settings = {
