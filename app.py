@@ -2,6 +2,7 @@ import os
 import glob
 import zipfile
 import time
+from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
 from google.genai.types import HarmCategory, HarmBlockThreshold
@@ -28,8 +29,7 @@ safety_settings = {
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
 }
 
-model = client.models(model_name='gemini-flash-latest', safety_settings=safety_settings)
-
+MODEL_NAME = 'gemini-2.0-flash' 
 
 PROMPT_TEXT = """
 Transforme o PDF/PNG/JPEG em tabela Markdown (para copiar no Excel) e XLSX, usando esta ordem EXATA de colunas:
@@ -262,7 +262,7 @@ def process_files():
                 for path in batch_paths:
                     try:
                         print(f"    Subindo arquivo: {os.path.basename(path)}") 
-                        file = genai.upload_file(path=path)
+                        file = client.files.upload(file=Path(path))
                         uploaded_files.append(file)
                         time.sleep(1)
                     except Exception as e:
@@ -279,7 +279,11 @@ def process_files():
 
                 try:
                     print(f"    Enviando {len(uploaded_files)} arquivos para o Gemini...")
-                    response = model.generate_content(prompt_payload)
+                    response = client.models.generate_content(
+                        model=MODEL_NAME,
+                        contents=prompt_payload,
+                        safety_settings=safety_settings,
+                    )
                     
                     # NOVO: Converte a resposta Markdown para DataFrame e armazena
                     df = parse_markdown_table(response.text)
@@ -302,7 +306,7 @@ def process_files():
                     for file in uploaded_files:
                         try:
                             time.sleep(1) # Pausa para evitar limite de taxa
-                            genai.delete_file(file.name)
+                            client.files.delete(name=file.name)
                         except Exception as e:
                             print(f"    Erro ao deletar arquivo {file.name}: {e}")
             
