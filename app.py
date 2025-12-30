@@ -37,7 +37,7 @@ safety_settings = {
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
 }
 
-MODEL_NAME = 'gemini-2.0-flash' 
+MODEL_NAME = 'gemini-2.5-flash' 
 
 PROMPT_TEXT = """
 Transforme o PDF/PNG/JPEG em tabela Markdown (para copiar no Excel) e XLSX, usando esta ordem EXATA de colunas:
