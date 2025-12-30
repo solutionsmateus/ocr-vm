@@ -5,37 +5,44 @@ import time
 from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
-from google.genai.types import HarmCategory, HarmBlockThreshold, GenerateContentConfig
+# Importação corrigida: Adicionando GenerateContentConfig e SafetySetting
+from google.genai.types import HarmCategory, HarmBlockThreshold, GenerateContentConfig, SafetySetting 
 import pandas as pd
 import io
 
+# --- 1. Configuração Inicial ---
 load_dotenv()
+# Correção 1: Lendo a API key da variável de ambiente GEMINI_API_KEY (injeta pelo GitHub Secrets)
 api_key = os.environ.get("GEMINI_API_KEY") 
-
 artifact_folder = os.environ.get("ARTIFACT_FOLDER", "./workflow-github-action")
 
 
 if not api_key:
     print("Erro: A 'GEMINI_API_KEY' não foi encontrada nas variáveis de ambiente.")
-    print("Por favor, certifique-se de que o Secret no GitHub Actions está configurado (ou crie um arquivo '.env' para execução local).")
+    print("Por favor, verifique se o secret está configurado e se o YAML o injeta corretamente (env: GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}).")
     exit()
 
 client = genai.Client(api_key=api_key)
 
-
-if not api_key:
-    print("Erro: A 'GEMINI_API_KEY' não foi encontrada.")
-    print("Por favor, crie um arquivo '.env' com sua chave.")
-    exit()
-
-client = genai.Client(api_key=api_key)
-
-safety_settings = {
-    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-}
+# Correção 3a: Definindo safety_settings como uma lista de objetos SafetySetting
+safety_settings_list = [
+    SafetySetting(
+        category=HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold=HarmBlockThreshold.BLOCK_NONE
+    ),
+    SafetySetting(
+        category=HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold=HarmBlockThreshold.BLOCK_NONE
+    ),
+    SafetySetting(
+        category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold=HarmBlockThreshold.BLOCK_NONE
+    ),
+    SafetySetting(
+        category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold=HarmBlockThreshold.BLOCK_NONE
+    ),
+]
 
 MODEL_NAME = 'gemini-2.0-flash' 
 
@@ -65,7 +72,7 @@ Atakarejo
 
 Novo Atakarejo
 
-Se o encarte tiver outra empresa → deixar em branco (nunca inventar).
+Se o encarte tiver outra empresa → deixar em branco (never inventar).
 
 ✅ DATA
 
@@ -143,12 +150,14 @@ Extrair somente o que existe na imagem
 **AVISO CRÍTICO**: NÃO utilize o caractere PIPE (|) dentro de NENHUM campo de texto ou dado. Se precisar de separador, use vírgula ou ponto-e-vírgula.
 """
 
+# Extensões de arquivo 
 VALID_EXTENSIONS = ('.jpeg', '.jpg', '.png', '.pdf')
 BATCH_SIZE = 1
 all_markdown_results = []
 all_dataframes = [] 
 
 def parse_markdown_table(markdown_text):
+    # Nomes EXATOS das 14 colunas
     COLUMNS = [
         "Empresa", "Data", "Data Início", "Data Fim", "Campanha", 
         "Categoria do Produto", "Produto", "Medida", "Quantidade", 
@@ -162,6 +171,7 @@ def parse_markdown_table(markdown_text):
         cleaned_data = '\n'.join(data_lines)
         data = io.StringIO(cleaned_data)
         
+        # Tenta ler a tabela. Usamos 'header=None' e 'engine='python'' para maior tolerância.
         df = pd.read_csv(
             data, 
             sep='|', 
@@ -173,21 +183,25 @@ def parse_markdown_table(markdown_text):
         
         df = df.iloc[:, 1:-1]
         
+        # Define os nomes das colunas
         if df.shape[1] == len(COLUMNS):
             df.columns = COLUMNS
         else:
             print(f"AVISO CRÍTICO: Colunas esperadas ({len(COLUMNS)}) != Colunas detectadas ({df.shape[1]}). Aplicando reajuste forçado.")
+            # Se o número de colunas não bater, tentamos prosseguir descartando colunas extras
             if df.shape[1] > len(COLUMNS):
                 df = df.iloc[:, :len(COLUMNS)]
                 df.columns = COLUMNS
                 print("Reajuste forçado aplicado: colunas extras descartadas.")
             else:
+                 # Se houver menos colunas, preenchemos com NaN no final
                 missing_cols = len(COLUMNS) - df.shape[1]
                 for i in range(missing_cols):
                     df[f'COL_MISSING_{i}'] = None
                 df.columns = COLUMNS
                 print("Reajuste forçado aplicado: colunas faltantes adicionadas.")
             
+        # Remove linhas que são todas NaN (podem ser linhas vazias residuais)
         df.dropna(how='all', inplace=True)
         
         return df
@@ -279,14 +293,16 @@ def process_files():
                 try:
                     print(f"    Enviando {len(uploaded_files)} arquivos para o Gemini...")
                     
+                    # Cria o objeto de configuração, passando a lista de safety settings
                     config = GenerateContentConfig(
-                        safety_settings=list(safety_settings.items())
+                        safety_settings=safety_settings_list
                     )
-
+                    
+                    # Chamada corrigida, passando o 'config'
                     response = client.models.generate_content(
                         model=MODEL_NAME,
                         contents=prompt_payload,
-                        config=config,
+                        config=config, 
                     )
                     
                     # NOVO: Converte a resposta Markdown para DataFrame e armazena
@@ -324,6 +340,7 @@ def process_files():
 
 
 if __name__ == "__main__":
+    # Verificação de dependências
     try:
         import pandas as pd
         import openpyxl # openpyxl é o motor padrão para escrita de XLSX pelo pandas
