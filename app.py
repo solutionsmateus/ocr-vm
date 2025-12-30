@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
-from google.genai.types import HarmCategory, HarmBlockThreshold
+from google.genai.types import HarmCategory, HarmBlockThreshold, GenerateContentConfig
 import pandas as pd
 import io
 
@@ -143,14 +143,12 @@ Extrair somente o que existe na imagem
 **AVISO CRÍTICO**: NÃO utilize o caractere PIPE (|) dentro de NENHUM campo de texto ou dado. Se precisar de separador, use vírgula ou ponto-e-vírgula.
 """
 
-# Extensões de arquivo 
 VALID_EXTENSIONS = ('.jpeg', '.jpg', '.png', '.pdf')
 BATCH_SIZE = 1
 all_markdown_results = []
 all_dataframes = [] 
 
 def parse_markdown_table(markdown_text):
-    # Nomes EXATOS das 14 colunas
     COLUMNS = [
         "Empresa", "Data", "Data Início", "Data Fim", "Campanha", 
         "Categoria do Produto", "Produto", "Medida", "Quantidade", 
@@ -164,7 +162,6 @@ def parse_markdown_table(markdown_text):
         cleaned_data = '\n'.join(data_lines)
         data = io.StringIO(cleaned_data)
         
-        # Tenta ler a tabela. Usamos 'header=None' e 'engine='python'' para maior tolerância.
         df = pd.read_csv(
             data, 
             sep='|', 
@@ -176,25 +173,21 @@ def parse_markdown_table(markdown_text):
         
         df = df.iloc[:, 1:-1]
         
-        # Define os nomes das colunas
         if df.shape[1] == len(COLUMNS):
             df.columns = COLUMNS
         else:
             print(f"AVISO CRÍTICO: Colunas esperadas ({len(COLUMNS)}) != Colunas detectadas ({df.shape[1]}). Aplicando reajuste forçado.")
-            # Se o número de colunas não bater, tentamos prosseguir descartando colunas extras
             if df.shape[1] > len(COLUMNS):
                 df = df.iloc[:, :len(COLUMNS)]
                 df.columns = COLUMNS
                 print("Reajuste forçado aplicado: colunas extras descartadas.")
             else:
-                 # Se houver menos colunas, preenchemos com NaN no final
                 missing_cols = len(COLUMNS) - df.shape[1]
                 for i in range(missing_cols):
                     df[f'COL_MISSING_{i}'] = None
                 df.columns = COLUMNS
                 print("Reajuste forçado aplicado: colunas faltantes adicionadas.")
             
-        # Remove linhas que são todas NaN (podem ser linhas vazias residuais)
         df.dropna(how='all', inplace=True)
         
         return df
@@ -286,10 +279,14 @@ def process_files():
                 try:
                     print(f"    Enviando {len(uploaded_files)} arquivos para o Gemini...")
                     
+                    config = GenerateContentConfig(
+                        safety_settings=list(safety_settings.items())
+                    )
+
                     response = client.models.generate_content(
                         model=MODEL_NAME,
                         contents=prompt_payload,
-                        safety_settings=safety_settings,
+                        config=config,
                     )
                     
                     # NOVO: Converte a resposta Markdown para DataFrame e armazena
@@ -327,7 +324,6 @@ def process_files():
 
 
 if __name__ == "__main__":
-    # Verificação de dependências
     try:
         import pandas as pd
         import openpyxl # openpyxl é o motor padrão para escrita de XLSX pelo pandas
