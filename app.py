@@ -9,10 +9,18 @@ from google.genai.types import HarmCategory, HarmBlockThreshold
 import pandas as pd
 import io
 
-# --- 1. Configuração Inicial ---
 load_dotenv()
-api_key = "AIzaSyA5_hcdJ4Ys4hkN3UraWMm2sjT3sLWkhoQ"
+api_key = os.environ.get("GEMINI_API_KEY") 
+
 artifact_folder = os.environ.get("ARTIFACT_FOLDER", "./workflow-github-action")
+
+
+if not api_key:
+    print("Erro: A 'GEMINI_API_KEY' não foi encontrada nas variáveis de ambiente.")
+    print("Por favor, certifique-se de que o Secret no GitHub Actions está configurado (ou crie um arquivo '.env' para execução local).")
+    exit()
+
+client = genai.Client(api_key=api_key)
 
 
 if not api_key:
