@@ -88,7 +88,8 @@ jobs:
       - name: Executar Script de Extração (app.py)
         shell: pwsh
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
+          GEMINI_API_KEY_BACKUP_01: ${{ secrets.GEMINI_API_KEY_BACKUP_01 }} 
         run: |
           python.exe app.py
          

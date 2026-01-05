@@ -5,26 +5,31 @@ import time
 from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
-# Importação corrigida: Adicionando GenerateContentConfig e SafetySetting
+from google.genai.errors import APIError 
 from google.genai.types import HarmCategory, HarmBlockThreshold, GenerateContentConfig, SafetySetting 
 import pandas as pd
 import io
+import re 
 
-# --- 1. Configuração Inicial ---
 load_dotenv()
-# Correção 1: Lendo a API key da variável de ambiente GEMINI_API_KEY (injeta pelo GitHub Secrets)
-api_key = os.environ.get("GEMINI_API_KEY") 
+
+API_KEY_LIST = []
+key_primary = os.environ.get("GEMINI_API_KEY")
+if key_primary:
+    API_KEY_LIST.append(key_primary)
+
+key_backup_1 = os.environ.get("GEMINI_API_KEY_BACKUP_01")
+if key_backup_1:
+    API_KEY_LIST.append(key_backup_1)
+
+if not API_KEY_LIST:
+    print("Erro: Nenhuma chave de API (GEMINI_API_KEY_PRIMARY ou BACKUP) foi encontrada nas variáveis de ambiente.")
+    print("Por favor, verifique se os secrets estão configurados no GitHub e injetados no YAML.")
+    exit()
+
 artifact_folder = os.environ.get("ARTIFACT_FOLDER", "./workflow-github-action")
 
 
-if not api_key:
-    print("Erro: A 'GEMINI_API_KEY' não foi encontrada nas variáveis de ambiente.")
-    print("Por favor, verifique se o secret está configurado e se o YAML o injeta corretamente (env: GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}).")
-    exit()
-
-client = genai.Client(api_key=api_key)
-
-# Correção 3a: Definindo safety_settings como uma lista de objetos SafetySetting
 safety_settings_list = [
     SafetySetting(
         category=HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -156,8 +161,54 @@ BATCH_SIZE = 1
 all_markdown_results = []
 all_dataframes = [] 
 
+
+def call_gemini_api_with_failover(prompt_payload, config):
+    """
+    Tenta chamar a API Gemini usando as chaves de API disponíveis em API_KEY_LIST.
+    Alterna para a próxima chave em caso de erro 429 RESOURCE_EXHAUSTED.
+    """
+    
+    for i, api_key in enumerate(API_KEY_LIST):
+        key_name = f"Chave #{i + 1}"
+        
+        try:
+            client = genai.Client(api_key=api_key)
+            print(f"    Tentando chamar API com {key_name}...")
+            
+            response = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt_payload,
+                config=config, 
+            )
+            
+            print(f"    SUCESSO na chamada API com {key_name}.")
+            return response
+
+        except APIError as e:
+            if "RESOURCE_EXHAUSTED" in str(e):
+                print(f"    ERRO de COTA (429 RESOURCE_EXHAUSTED) com {key_name}.")
+                
+                retry_delay = 15 
+                match = re.search(r"'retryDelay': '(\d+)s'", str(e))
+                if match:
+                    retry_delay = int(match.group(1)) + 1 # Adiciona 1s de buffer
+                
+                print(f"    Aguardando {retry_delay} segundos antes de tentar a próxima chave...")
+                time.sleep(retry_delay)
+                continue 
+            
+            else:
+                print(f"    ERRO INESPERADO da API com {key_name}: {e}")
+                raise e 
+
+        except Exception as e:
+            print(f"    ERRO geral ao conectar ou processar com {key_name}: {e}")
+            raise e
+            
+    raise Exception("Falha ao chamar a API Gemini: Todas as chaves esgotaram a cota (429) ou falharam.")
+
+
 def parse_markdown_table(markdown_text):
-    # Nomes EXATOS das 14 colunas
     COLUMNS = [
         "Empresa", "Data", "Data Início", "Data Fim", "Campanha", 
         "Categoria do Produto", "Produto", "Medida", "Quantidade", 
@@ -171,7 +222,6 @@ def parse_markdown_table(markdown_text):
         cleaned_data = '\n'.join(data_lines)
         data = io.StringIO(cleaned_data)
         
-        # Tenta ler a tabela. Usamos 'header=None' e 'engine='python'' para maior tolerância.
         df = pd.read_csv(
             data, 
             sep='|', 
@@ -183,25 +233,21 @@ def parse_markdown_table(markdown_text):
         
         df = df.iloc[:, 1:-1]
         
-        # Define os nomes das colunas
         if df.shape[1] == len(COLUMNS):
             df.columns = COLUMNS
         else:
             print(f"AVISO CRÍTICO: Colunas esperadas ({len(COLUMNS)}) != Colunas detectadas ({df.shape[1]}). Aplicando reajuste forçado.")
-            # Se o número de colunas não bater, tentamos prosseguir descartando colunas extras
             if df.shape[1] > len(COLUMNS):
                 df = df.iloc[:, :len(COLUMNS)]
                 df.columns = COLUMNS
                 print("Reajuste forçado aplicado: colunas extras descartadas.")
             else:
-                 # Se houver menos colunas, preenchemos com NaN no final
                 missing_cols = len(COLUMNS) - df.shape[1]
                 for i in range(missing_cols):
                     df[f'COL_MISSING_{i}'] = None
                 df.columns = COLUMNS
                 print("Reajuste forçado aplicado: colunas faltantes adicionadas.")
             
-        # Remove linhas que são todas NaN (podem ser linhas vazias residuais)
         df.dropna(how='all', inplace=True)
         
         return df
@@ -227,7 +273,6 @@ def save_dataframes_to_excel(dataframes, output_filename="gemini_resultados_comp
         print(f"ERRO ao salvar o arquivo final XLSX: {e}")
 
 def process_files():
-    # 2. Extrair todos os Zips
     print(f"Procurando por arquivos .zip em {artifact_folder}...")
     zip_pattern = os.path.join(artifact_folder, "**", "*.zip")
     zip_files = glob.glob(zip_pattern, recursive=True)
@@ -271,11 +316,17 @@ def process_files():
 
                 uploaded_files = []
                 prompt_payload = []
+                
+                try:
+                    upload_client = genai.Client(api_key=API_KEY_LIST[0]) 
+                except Exception as e:
+                    print(f"ERRO: Não foi possível criar o cliente de upload com a primeira chave disponível. {e}")
+                    continue
 
                 for path in batch_paths:
                     try:
                         print(f"    Subindo arquivo: {os.path.basename(path)}") 
-                        file = client.files.upload(file=Path(path))
+                        file = upload_client.files.upload(file=Path(path))
                         uploaded_files.append(file)
                         time.sleep(1)
                     except Exception as e:
@@ -293,25 +344,17 @@ def process_files():
                 try:
                     print(f"    Enviando {len(uploaded_files)} arquivos para o Gemini...")
                     
-                    # Cria o objeto de configuração, passando a lista de safety settings
                     config = GenerateContentConfig(
                         safety_settings=safety_settings_list
                     )
                     
-                    # Chamada corrigida, passando o 'config'
-                    response = client.models.generate_content(
-                        model=MODEL_NAME,
-                        contents=prompt_payload,
-                        config=config, 
-                    )
+                    response = call_gemini_api_with_failover(prompt_payload, config)
                     
-                    # NOVO: Converte a resposta Markdown para DataFrame e armazena
                     df = parse_markdown_table(response.text)
                     if df is not None:
                         all_dataframes.append(df)
                         print(f"    Resposta recebida e convertida em DataFrame.")
                     else:
-                        # Se a conversão falhar, ainda tentamos printar a resposta bruta para debug
                         print(f"Resposta bruta do Gemini (pode conter erro de formatação):")
                         print("--- INÍCIO DA RESPOSTA BRUTA ---")
                         print(response.text)
@@ -319,14 +362,14 @@ def process_files():
                         print(f"    Resposta recebida, mas falhou na conversão para DataFrame.")
                     
                 except Exception as e:
-                    print(f"    ERRO ao chamar a API Gemini: {e}")
+                    print(f"    ERRO FATAL (todas as tentativas falharam): {e}")
                 
                 finally:
                     print("    Limpando arquivos do servidor Gemini...")
                     for file in uploaded_files:
                         try:
                             time.sleep(1) # Pausa para evitar limite de taxa
-                            client.files.delete(name=file.name)
+                            upload_client.files.delete(name=file.name)
                         except Exception as e:
                             print(f"    Erro ao deletar arquivo {file.name}: {e}")
             
@@ -335,12 +378,10 @@ def process_files():
     if not all_dataframes:
         print("Nenhum resultado foi gerado pela API ou convertido para DataFrame.")
     else:
-        # NOVO: Chamada para salvar em XLSX
         save_dataframes_to_excel(all_dataframes)
 
 
 if __name__ == "__main__":
-    # Verificação de dependências
     try:
         import pandas as pd
         import openpyxl # openpyxl é o motor padrão para escrita de XLSX pelo pandas
