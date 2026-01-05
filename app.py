@@ -22,6 +22,11 @@ key_backup_1 = os.environ.get("GEMINI_API_KEY_BACKUP_01")
 if key_backup_1:
     API_KEY_LIST.append(key_backup_1)
 
+key_backup_2 = os.environ.get("GEMINI_API_KEY_BACKUP_02")
+
+if key_backup_2:
+    API_KEY_LIST.append(key_backup_2)
+
 if not API_KEY_LIST:
     print("Erro: Nenhuma chave de API (GEMINI_API_KEY_PRIMARY ou BACKUP) foi encontrada nas variáveis de ambiente.")
     print("Por favor, verifique se os secrets estão configurados no GitHub e injetados no YAML.")
@@ -384,7 +389,7 @@ def process_files():
 if __name__ == "__main__":
     try:
         import pandas as pd
-        import openpyxl # openpyxl é o motor padrão para escrita de XLSX pelo pandas
+        import openpyxl 
     except ImportError:
         print("\n--- DEPENDÊNCIA FALTANDO ---")
         print("Para salvar em XLSX, você precisa instalar pandas e openpyxl.")
