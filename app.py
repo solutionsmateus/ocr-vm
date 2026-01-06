@@ -159,6 +159,7 @@ Corrigir acentos, erros de OCR e números
 
 Extrair somente o que existe na imagem
 
+DETALHE: : QUANDO FOR ENCARTES DO COMETA SUPERMERCADOS, A CIDADE E LOJA SEMPRE VÃO SER “FORTALEZA” E O ESTADO: CEARÁ
 **AVISO CRÍTICO**: NÃO utilize o caractere PIPE (|) dentro de NENHUM campo de texto ou dado. Se precisar de separador, use vírgula ou ponto-e-vírgula.
 """
 
