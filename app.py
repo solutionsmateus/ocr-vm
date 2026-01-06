@@ -92,7 +92,7 @@ Data Início e Data Fim também devem aparecer separadamente.
 
 ✅ CAMPANHA
 
-Formato: Nome da campanha + dia da oferta + Estado
+Formato: Nome da campanha + Data do Encarte + Estado
 
 Nunca colocar campanha dentro da coluna Empresa.
 
@@ -101,6 +101,8 @@ Nunca colocar campanha dentro da coluna Empresa.
 Sem referência/código (ex.: “cx”, “ref”, SKU, código interno)
 
 Se o nome estiver incompleto, não inventar.
+
+Preciso de todas as informações que estiverem na imagem de cada produto.
 
 ✅ MEDIDA
 
