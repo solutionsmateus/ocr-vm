@@ -90,6 +90,7 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
           GEMINI_API_KEY_BACKUP_01: ${{ secrets.GEMINI_API_KEY_BACKUP_01 }} 
+          GEMINI_API_KEY_BACKUP_02: ${{ secrets.GEMINI_API_KEY_BACKUP_02 }}
         run: |
           python.exe app.py
          
