@@ -10,6 +10,7 @@ from google.genai.types import HarmCategory, HarmBlockThreshold, GenerateContent
 import pandas as pd
 import io
 import re 
+from concurrent.futures import ThreadPoolExecutor, as_completed 
 
 load_dotenv()
 
@@ -163,9 +164,10 @@ DETALHE: : QUANDO FOR ENCARTES DO COMETA SUPERMERCADOS, A CIDADE E LOJA SEMPRE V
 **AVISO CRÍTICO**: NÃO utilize o caractere PIPE (|) dentro de NENHUM campo de texto ou dado. Se precisar de separador, use vírgula ou ponto-e-vírgula.
 """
 
-# Extensões de arquivo 
 VALID_EXTENSIONS = ('.jpeg', '.jpg', '.png', '.pdf')
-BATCH_SIZE = 1
+BATCH_SIZE = 1 
+MAX_THREADS = 8 
+
 all_markdown_results = []
 all_dataframes = [] 
 
@@ -202,7 +204,7 @@ def call_gemini_api_with_failover(prompt_payload, config):
                     retry_delay = int(match.group(1)) + 1 # Adiciona 1s de buffer
                 
                 print(f"    Aguardando {retry_delay} segundos antes de tentar a próxima chave...")
-                time.sleep(retry_delay)
+                time.sleep(retry_delay) 
                 continue 
             
             else:
@@ -217,6 +219,7 @@ def call_gemini_api_with_failover(prompt_payload, config):
 
 
 def parse_markdown_table(markdown_text):
+    # [Função inalterada]
     COLUMNS = [
         "Empresa", "Data", "Data Início", "Data Fim", "Campanha", 
         "Categoria do Produto", "Produto", "Medida", "Quantidade", 
@@ -280,6 +283,62 @@ def save_dataframes_to_excel(dataframes, output_filename="gemini_resultados_comp
     except Exception as e:
         print(f"ERRO ao salvar o arquivo final XLSX: {e}")
 
+
+# [NOVA FUNÇÃO]
+def process_single_file(file_path):
+    print(f"[THREAD] Iniciando processamento de: {os.path.basename(file_path)}")
+    uploaded_file = None
+
+    try:
+        upload_client = genai.Client(api_key=API_KEY_LIST[0]) 
+    except Exception as e:
+        print(f"[THREAD] ERRO: Não foi possível criar o cliente de upload para {os.path.basename(file_path)}. {e}")
+        return None
+
+    try:
+        print(f"[THREAD] Subindo arquivo: {os.path.basename(file_path)}") 
+        time.sleep(0.5) 
+        uploaded_file = upload_client.files.upload(file=Path(file_path))
+    except Exception as e:
+        print(f"[THREAD] ERRO ao subir {os.path.basename(file_path)}: {e}")
+        return None
+
+    try:
+        print(f"[THREAD] Enviando arquivo {os.path.basename(file_path)} para o Gemini...")
+        
+        prompt_payload = [
+            f"1 arquivo anexado ({os.path.basename(file_path)}).",
+            PROMPT_TEXT,
+            uploaded_file
+        ]
+        
+        config = GenerateContentConfig(
+            safety_settings=safety_settings_list
+        )
+        
+        response = call_gemini_api_with_failover(prompt_payload, config)
+        
+        df = parse_markdown_table(response.text)
+        if df is not None:
+            print(f"[THREAD] SUCESSO na conversão para DataFrame: {os.path.basename(file_path)}")
+            return df
+        else:
+            print(f"[THREAD] Falha na conversão para DataFrame: {os.path.basename(file_path)}. Verifique a resposta bruta.")
+            return None
+            
+    except Exception as e:
+        print(f"[THREAD] ERRO FATAL no processamento de {os.path.basename(file_path)}: {e}")
+        return None
+    
+    finally:
+        if uploaded_file:
+            print(f"[THREAD] Limpando arquivo {uploaded_file.name} do servidor Gemini...")
+            try:
+                time.sleep(0.5) 
+                upload_client.files.delete(name=uploaded_file.name)
+            except Exception as e:
+                print(f"[THREAD] Erro ao deletar arquivo {uploaded_file.name}: {e}")
+
 def process_files():
     print(f"Procurando por arquivos .zip em {artifact_folder}...")
     zip_pattern = os.path.join(artifact_folder, "**", "*.zip")
@@ -302,87 +361,36 @@ def process_files():
         print("Extração de Zips concluída.\n")
 
     print("Iniciando varredura das pastas de supermercados...")
+    all_file_paths = []
     
     for root, dirs, files in os.walk(artifact_folder, topdown=False):
-        
         if not dirs and files and root != artifact_folder:
-            
             file_paths_to_process = [
                 os.path.join(root, f) for f in files if f.lower().endswith(VALID_EXTENSIONS)
             ]
+            all_file_paths.extend(file_paths_to_process)
 
-            if not file_paths_to_process:
-                continue 
+    if not all_file_paths:
+        print("Nenhum arquivo válido encontrado para processamento.")
+        return
 
-            print(f"--- Processando Diretório: {root} ---")
-            print(f"Encontrados {len(file_paths_to_process)} arquivos válidos.")
+    print(f"TOTAL: {len(all_file_paths)} arquivos encontrados para processar.")
+    print(f"Processando em paralelo com até {MAX_THREADS} threads...")
 
-            for i in range(0, len(file_paths_to_process), BATCH_SIZE):
-                batch_paths = file_paths_to_process[i : i + BATCH_SIZE]
-                print(f"  Processando lote {i//BATCH_SIZE + 1} ({len(batch_paths)} arquivos)...")
-                time.sleep(1)
-
-                uploaded_files = []
-                prompt_payload = []
+    with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+        future_to_file = {executor.submit(process_single_file, path): path for path in all_file_paths}
+        
+        for future in as_completed(future_to_file):
+            file_path = future_to_file[future]
+            try:
+                df_result = future.result() 
+                if df_result is not None:
+                    all_dataframes.append(df_result) 
                 
-                try:
-                    upload_client = genai.Client(api_key=API_KEY_LIST[0]) 
-                except Exception as e:
-                    print(f"ERRO: Não foi possível criar o cliente de upload com a primeira chave disponível. {e}")
-                    continue
+            except Exception as exc:
+                print(f"Arquivo {os.path.basename(file_path)} gerou uma exceção: {exc}")
 
-                for path in batch_paths:
-                    try:
-                        print(f"    Subindo arquivo: {os.path.basename(path)}") 
-                        file = upload_client.files.upload(file=Path(path))
-                        uploaded_files.append(file)
-                        time.sleep(1)
-                    except Exception as e:
-                        print(f"    ERRO ao subir {path}: {e}")
-                
-                if not uploaded_files:
-                    print("    Nenhum arquivo foi upado com sucesso neste lote. Pulando.")
-                    continue
-
-                prompt_payload = [
-                    f"{len(uploaded_files)} arquivos anexados.",
-                    PROMPT_TEXT
-                ] + uploaded_files
-
-                try:
-                    print(f"    Enviando {len(uploaded_files)} arquivos para o Gemini...")
-                    
-                    config = GenerateContentConfig(
-                        safety_settings=safety_settings_list
-                    )
-                    
-                    response = call_gemini_api_with_failover(prompt_payload, config)
-                    
-                    df = parse_markdown_table(response.text)
-                    if df is not None:
-                        all_dataframes.append(df)
-                        print(f"    Resposta recebida e convertida em DataFrame.")
-                    else:
-                        print(f"Resposta bruta do Gemini (pode conter erro de formatação):")
-                        print("--- INÍCIO DA RESPOSTA BRUTA ---")
-                        print(response.text)
-                        print("--- FIM DA RESPOSTA BRUTA ---")
-                        print(f"    Resposta recebida, mas falhou na conversão para DataFrame.")
-                    
-                except Exception as e:
-                    print(f"    ERRO FATAL (todas as tentativas falharam): {e}")
-                
-                finally:
-                    print("    Limpando arquivos do servidor Gemini...")
-                    for file in uploaded_files:
-                        try:
-                            time.sleep(1) # Pausa para evitar limite de taxa
-                            upload_client.files.delete(name=file.name)
-                        except Exception as e:
-                            print(f"    Erro ao deletar arquivo {file.name}: {e}")
-            
-            print(f"--- Diretório {root} concluído ---\n")
-
+    
     if not all_dataframes:
         print("Nenhum resultado foi gerado pela API ou convertido para DataFrame.")
     else:
