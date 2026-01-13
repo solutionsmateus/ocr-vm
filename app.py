@@ -4,18 +4,16 @@ import zipfile
 import time
 from pathlib import Path
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
 from google.genai.errors import APIError 
 from google.genai.types import HarmCategory, HarmBlockThreshold, GenerateContentConfig, SafetySetting 
 import pandas as pd
 import io
 import re 
 from concurrent.futures import ThreadPoolExecutor, as_completed 
-from itertools import cycle # Importa cycle para rotacionar as chaves
 
 load_dotenv()
 
-# --- Configuração de Chaves e Variáveis de Ambiente ---
 API_KEY_LIST = []
 key_primary = os.environ.get("GEMINI_API_KEY")
 if key_primary:
@@ -26,6 +24,7 @@ if key_backup_1:
     API_KEY_LIST.append(key_backup_1)
 
 key_backup_2 = os.environ.get("GEMINI_API_KEY_BACKUP_02")
+
 if key_backup_2:
     API_KEY_LIST.append(key_backup_2)
 
@@ -35,7 +34,6 @@ if not API_KEY_LIST:
     exit()
 
 artifact_folder = os.environ.get("ARTIFACT_FOLDER", "./workflow-github-action")
-# --- Fim da Configuração de Chaves e Variáveis de Ambiente ---
 
 
 safety_settings_list = [
@@ -59,7 +57,6 @@ safety_settings_list = [
 
 MODEL_NAME = 'gemini-2.5-flash' 
 
-# --- PROMPT INALTERADO ---
 PROMPT_TEXT = """
 Transforme o PDF/PNG/JPEG em tabela Markdown (para copiar no Excel) e XLSX, usando esta ordem EXATA de colunas:
 
@@ -166,8 +163,6 @@ Extrair somente o que existe na imagem
 DETALHE: : QUANDO FOR ENCARTES DO COMETA SUPERMERCADOS, A CIDADE E LOJA SEMPRE VÃO SER “FORTALEZA” E O ESTADO: CEARÁ
 **AVISO CRÍTICO**: NÃO utilize o caractere PIPE (|) dentro de NENHUM campo de texto ou dado. Se precisar de separador, use vírgula ou ponto-e-vírgula.
 """
-# --- FIM DO PROMPT INALTERADO ---
-
 
 VALID_EXTENSIONS = ('.jpeg', '.jpg', '.png', '.pdf')
 BATCH_SIZE = 1 
@@ -177,7 +172,54 @@ all_markdown_results = []
 all_dataframes = [] 
 
 
+def call_gemini_api_with_failover(prompt_payload, config):
+    """
+    Tenta chamar a API Gemini usando as chaves de API disponíveis em API_KEY_LIST.
+    Alterna para a próxima chave em caso de erro 429 RESOURCE_EXHAUSTED.
+    """
+    
+    for i, api_key in enumerate(API_KEY_LIST):
+        key_name = f"Chave #{i + 1}"
+        
+        try:
+            client = genai.Client(api_key=api_key)
+            print(f"    Tentando chamar API com {key_name}...")
+            
+            response = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt_payload,
+                config=config, 
+            )
+            
+            print(f"    SUCESSO na chamada API com {key_name}.")
+            return response
+
+        except APIError as e:
+            if "RESOURCE_EXHAUSTED" in str(e):
+                print(f"    ERRO de COTA (429 RESOURCE_EXHAUSTED) com {key_name}.")
+                
+                retry_delay = 15 
+                match = re.search(r"'retryDelay': '(\d+)s'", str(e))
+                if match:
+                    retry_delay = int(match.group(1)) + 1 # Adiciona 1s de buffer
+                
+                print(f"    Aguardando {retry_delay} segundos antes de tentar a próxima chave...")
+                time.sleep(retry_delay) 
+                continue 
+            
+            else:
+                print(f"    ERRO INESPERADO da API com {key_name}: {e}")
+                raise e 
+
+        except Exception as e:
+            print(f"    ERRO geral ao conectar ou processar com {key_name}: {e}")
+            raise e
+            
+    raise Exception("Falha ao chamar a API Gemini: Todas as chaves esgotaram a cota (429) ou falharam.")
+
+
 def parse_markdown_table(markdown_text):
+    # [Função inalterada]
     COLUMNS = [
         "Empresa", "Data", "Data Início", "Data Fim", "Campanha", 
         "Categoria do Produto", "Produto", "Medida", "Quantidade", 
@@ -186,27 +228,22 @@ def parse_markdown_table(markdown_text):
     
     try:
         lines = markdown_text.strip().split('\n')
-        # Filtra linhas que começam com '|' e exclui as duas primeiras linhas (header e separador)
-        data_lines = [line for line in lines if line.strip().startswith('|')][2:]
+        data_lines = [line for line in lines[2:] if line.strip().startswith('|')]
         
         cleaned_data = '\n'.join(data_lines)
         data = io.StringIO(cleaned_data)
         
-        # Leitura robusta da tabela Markdown
         df = pd.read_csv(
             data, 
             sep='|', 
             skipinitialspace=True, 
             header=None,
-            on_bad_lines='warn',
+            on_bad_lines='warn', # Avisa sobre linhas problemáticas, mas tenta continuar
             engine='python' 
         )
         
-        # Remove a primeira e a última coluna (que são separadores vazios)
-        if df.shape[1] >= 2:
-            df = df.iloc[:, 1:-1]
+        df = df.iloc[:, 1:-1]
         
-        # Tratamento de colunas faltantes/extras
         if df.shape[1] == len(COLUMNS):
             df.columns = COLUMNS
         else:
@@ -217,7 +254,6 @@ def parse_markdown_table(markdown_text):
                 print("Reajuste forçado aplicado: colunas extras descartadas.")
             else:
                 missing_cols = len(COLUMNS) - df.shape[1]
-                # Adiciona colunas faltantes com None
                 for i in range(missing_cols):
                     df[f'COL_MISSING_{i}'] = None
                 df.columns = COLUMNS
@@ -248,108 +284,66 @@ def save_dataframes_to_excel(dataframes, output_filename="gemini_resultados_comp
         print(f"ERRO ao salvar o arquivo final XLSX: {e}")
 
 
-# 💡 FUNÇÃO OTIMIZADA: Tenta a sequência UPLOAD -> GENERATE -> DELETE com várias chaves em caso de falha.
-def process_single_file(file_path, key_iterator):
+# [NOVA FUNÇÃO]
+def process_single_file(file_path):
+    print(f"[THREAD] Iniciando processamento de: {os.path.basename(file_path)}")
     uploaded_file = None
-    
-    # 🔄 Loop de Failover dentro da Thread
-    for i in range(len(API_KEY_LIST)):
-        api_key = next(key_iterator)
-        key_name = f"Chave de Failover #{i + 1}"
-        
-        try:
-            # 1. Configura o cliente para esta tentativa
-            client = genai.Client(api_key=api_key)
-            model = client.models.GenerativeModel(
-                model_name=MODEL_NAME, 
-                safety_settings=safety_settings_list
-            )
-            
-            # 2. Upload
-            print(f"[THREAD] Tentando UP/GEN/DEL com {key_name} para {os.path.basename(file_path)}")
-            time.sleep(0.5) 
-            
-            # Upload usa o cliente específico da chave atual
-            uploaded_file = client.files.upload(file=Path(file_path)) 
-            
-            # 3. Geração de Conteúdo
-            prompt_payload = [
-                f"1 arquivo anexado ({os.path.basename(file_path)}).",
-                PROMPT_TEXT,
-                uploaded_file
-            ]
-            
-            config = GenerateContentConfig(
-                safety_settings=safety_settings_list
-            )
-            
-            # A geração usa o modelo específico da chave atual
-            response = model.generate_content(
-                contents=prompt_payload,
-                config=config, 
-            )
-            
-            # 4. Parsing e Sucesso
-            df = parse_markdown_table(response.text)
-            if df is not None:
-                print(f"[THREAD] SUCESSO na conversão para DataFrame de {os.path.basename(file_path)} com {key_name}.")
-                return df
-            else:
-                print(f"[THREAD] Falha de conversão: {os.path.basename(file_path)}. Tentar próxima chave.")
-                continue # Tenta a próxima chave se a conversão falhar
 
-        except APIError as e:
-            if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-                print(f"[THREAD] ERRO de COTA (429 RESOURCE_EXHAUSTED) com {key_name}.")
-                retry_delay = 15 
-                match = re.search(r"'retryDelay': '(\d+)s'", str(e))
-                if match:
-                    retry_delay = int(match.group(1)) + 1 
-                
-                print(f"[THREAD] Aguardando {retry_delay} segundos antes de tentar a próxima chave...")
-                time.sleep(retry_delay) 
-                # Continua o loop para tentar a próxima chave
-            
-            elif "PERMISSION_DENIED" in str(e) or "403" in str(e):
-                # Este erro pode ocorrer se houver falha no upload/acesso ao arquivo. 
-                # É crucial tentar a próxima chave.
-                print(f"[THREAD] ERRO FATAL (403 PERMISSION_DENIED) com {key_name}: Arquivo não pode ser acessado. Tentando próxima chave.")
-                time.sleep(5) # Espera um pouco antes de tentar o próximo cliente
-            
-            else:
-                print(f"[THREAD] ERRO INESPERADO da API com {key_name}: {e}. Tentando próxima chave.")
-                time.sleep(5)
-            
-            continue # Tenta a próxima chave
+    try:
+        upload_client = genai.Client(api_key=API_KEY_LIST[0]) 
+    except Exception as e:
+        print(f"[THREAD] ERRO: Não foi possível criar o cliente de upload para {os.path.basename(file_path)}. {e}")
+        return None
 
-        except Exception as e:
-            print(f"[THREAD] ERRO geral (Upload ou Conexão) com {key_name} para {os.path.basename(file_path)}: {e}. Tentando próxima chave.")
-            time.sleep(5)
-            continue # Tenta a próxima chave
+    try:
+        print(f"[THREAD] Subindo arquivo: {os.path.basename(file_path)}") 
+        time.sleep(0.5) 
+        uploaded_file = upload_client.files.upload(file=Path(file_path))
+    except Exception as e:
+        print(f"[THREAD] ERRO ao subir {os.path.basename(file_path)}: {e}")
+        return None
+
+    try:
+        print(f"[THREAD] Enviando arquivo {os.path.basename(file_path)} para o Gemini...")
         
-        finally:
-            if uploaded_file:
-                # 5. Deleção (CRÍTICO: Usa o cliente que FEZ o upload, que é o 'client' atual)
-                print(f"[THREAD] Limpando arquivo {uploaded_file.name} do servidor Gemini...")
-                try:
-                    time.sleep(0.5) 
-                    client.files.delete(name=uploaded_file.name)
-                    uploaded_file = None # Reseta o arquivo upado para a próxima tentativa
-                except Exception as e:
-                    # Se o erro for 403, pode ser que o upload não tenha funcionado, ou o delete falhou.
-                    print(f"[THREAD] Erro ao deletar {uploaded_file.name} com {key_name}: {e}")
-                    # Não levantamos exceção aqui, pois a tarefa já falhou ou teve sucesso.
+        prompt_payload = [
+            f"1 arquivo anexado ({os.path.basename(file_path)}).",
+            PROMPT_TEXT,
+            uploaded_file
+        ]
+        
+        config = GenerateContentConfig(
+            safety_settings=safety_settings_list
+        )
+        
+        response = call_gemini_api_with_failover(prompt_payload, config)
+        
+        df = parse_markdown_table(response.text)
+        if df is not None:
+            print(f"[THREAD] SUCESSO na conversão para DataFrame: {os.path.basename(file_path)}")
+            return df
+        else:
+            print(f"[THREAD] Falha na conversão para DataFrame: {os.path.basename(file_path)}. Verifique a resposta bruta.")
+            return None
+            
+    except Exception as e:
+        print(f"[THREAD] ERRO FATAL no processamento de {os.path.basename(file_path)}: {e}")
+        return None
     
-    # Se o loop terminar sem sucesso
-    print(f"[THREAD] FALHA TOTAL: Não foi possível processar {os.path.basename(file_path)} após {len(API_KEY_LIST)} tentativas de failover.")
-    return None
+    finally:
+        if uploaded_file:
+            print(f"[THREAD] Limpando arquivo {uploaded_file.name} do servidor Gemini...")
+            try:
+                time.sleep(0.5) 
+                upload_client.files.delete(name=uploaded_file.name)
+            except Exception as e:
+                print(f"[THREAD] Erro ao deletar arquivo {uploaded_file.name}: {e}")
 
 def process_files():
     print(f"Procurando por arquivos .zip em {artifact_folder}...")
     zip_pattern = os.path.join(artifact_folder, "**", "*.zip")
     zip_files = glob.glob(zip_pattern, recursive=True)
 
-    # ... (Lógica de Extração de Zips inalterada) ...
     if not zip_files:
         print("Nenhum arquivo .zip encontrado. Verificando arquivos existentes...")
     else:
@@ -383,12 +377,8 @@ def process_files():
     print(f"TOTAL: {len(all_file_paths)} arquivos encontrados para processar.")
     print(f"Processando em paralelo com até {MAX_THREADS} threads...")
 
-    # 💡 MUDANÇA CRÍTICA: Criar um iterador cíclico de chaves para distribuição inicial
-    key_cycle = cycle(API_KEY_LIST)
-    
     with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-        # Passa o iterador cíclico para cada thread, garantindo rotação
-        future_to_file = {executor.submit(process_single_file, path, key_cycle): path for path in all_file_paths}
+        future_to_file = {executor.submit(process_single_file, path): path for path in all_file_paths}
         
         for future in as_completed(future_to_file):
             file_path = future_to_file[future]
@@ -409,7 +399,6 @@ def process_files():
 
 if __name__ == "__main__":
     try:
-        # ... (Verificação de dependências inalterada) ...
         import pandas as pd
         import openpyxl 
     except ImportError:
