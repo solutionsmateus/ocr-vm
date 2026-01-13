@@ -4,7 +4,7 @@ import zipfile
 import time
 from pathlib import Path
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
 from google.genai.errors import APIError 
 from google.genai.types import HarmCategory, HarmBlockThreshold, GenerateContentConfig, SafetySetting 
 import pandas as pd
