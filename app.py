@@ -4,7 +4,7 @@ import zipfile
 import time
 from pathlib import Path
 from dotenv import load_dotenv
-from google import genai
+import google.generativeai as genai
 from google.genai.errors import APIError 
 from google.genai.types import HarmCategory, HarmBlockThreshold, GenerateContentConfig, SafetySetting 
 import pandas as pd
@@ -163,13 +163,7 @@ Corrigir acentos, erros de OCR e números
 
 Extrair somente o que existe na imagem
 
-Siga estes detalhes minunciosamente: 
-DETALHE 1: : QUANDO FOR ENCARTES DO COMETA SUPERMERCADOS, A CIDADE E LOJA SEMPRE VÃO SER “FORTALEZA” E O ESTADO: CEARÁ
-
-DETALHE 2: QUANDO FOR ENCARTES DO NOVO ATACAREJO, A LOJA SEMPRE VAI SER "Olinda", A CIDADE: "Recife" E O ESTADO: "PERNAMBUCO"
-
-DETALHE 3: LEIA A DESCRIÇÃO COMPLETA DOS PRODUTOS DOS ENCARTES DE TODOS OS SUPERMERCADOS, EU PRECISO DE TODAS AS INFORMAÇÕES CORRETAS NOS SEUS LUGARES DEVIDOS DE ACORDO COM AS CATEGORIAS CITADAS ACIMA.
-
+DETALHE: : QUANDO FOR ENCARTES DO COMETA SUPERMERCADOS, A CIDADE E LOJA SEMPRE VÃO SER “FORTALEZA” E O ESTADO: CEARÁ
 **AVISO CRÍTICO**: NÃO utilize o caractere PIPE (|) dentro de NENHUM campo de texto ou dado. Se precisar de separador, use vírgula ou ponto-e-vírgula.
 """
 # --- FIM DO PROMPT INALTERADO ---
