@@ -5,4 +5,3 @@ pandas
 python-dotenv
 packaging
 openpyxl
-webdriver-manager
