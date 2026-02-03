@@ -2,174 +2,310 @@ import os
 import glob
 import zipfile
 import time
-import io
-import re
-from pathlib import Path
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import pandas as pd
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import io
 
+# --- 1. Configuração Inicial ---
 load_dotenv()
+api_key = os.getenv("GEMINI_API_KEY")
+artifact_folder = os.environ.get("ARTIFACT_FOLDER", "./workflow-github-action")
 
-# --- Configuração de Chaves e Variáveis de Ambiente ---
-API_KEY_LIST = []
-for key in ["GEMINI_API_KEY", "GEMINI_API_KEY_BACKUP_01", "GEMINI_API_KEY_BACKUP_02"]:
-    val = os.environ.get(key)
-    if val:
-        API_KEY_LIST.append(val)
-
-if not API_KEY_LIST:
-    print("Erro: Nenhuma chave de API encontrada nas variáveis de ambiente.")
+if not api_key:
+    print("Erro: A 'GEMINI_API_KEY' não foi encontrada.")
+    print("Por favor, crie um arquivo '.env' com sua chave.")
     exit()
 
-artifact_folder = os.environ.get("ARTIFACT_FOLDER", "./workflow-github-action")
-MODEL_NAME = 'gemini-2.0-flash'  # Versão estável e rápida
-MAX_THREADS = 8 
-VALID_EXTENSIONS = ('.jpeg', '.jpg', '.png', '.pdf')
+try:
+    genai.configure(api_key=api_key)
+except Exception as e:
+    print(f"Erro ao configurar a API Gemini: {e}")
+    exit()
 
-# --- Configurações de Segurança ---
-safety_settings_list = [
-    types.SafetySetting(
-        category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-        threshold=types.HarmBlockThreshold.BLOCK_NONE
-    ),
-    types.SafetySetting(
-        category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold=types.HarmBlockThreshold.BLOCK_NONE
-    ),
-    types.SafetySetting(
-        category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        threshold=types.HarmBlockThreshold.BLOCK_NONE
-    ),
-    types.SafetySetting(
-        category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold=types.HarmBlockThreshold.BLOCK_NONE
-    ),
-]
+safety_settings = {
+    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+}
+
+model = genai.GenerativeModel(
+    model_name='gemini-flash-latest', 
+    safety_settings=safety_settings
+)
 
 PROMPT_TEXT = """
 Transforme o PDF/PNG/JPEG em tabela Markdown (para copiar no Excel) e XLSX, usando esta ordem EXATA de colunas:
+
 Empresa, Data, Data Início, Data Fim, Campanha, Categoria do Produto, Produto, Medida, Quantidade, Preço, App, Loja, Cidade, Estado.
 
-✅ REGRAS OBRIGATÓRIAS:
-- Empresa: Apenas Assaí Atacadista, Atacadão, Cometa Supermercados, Frangolândia, GBarbosa, Atakarejo, Novo Atakarejo.
-- Loja: Cidades onde o encarte atua (separadas por ;).
-- Cidade/Estado: Conforme tabela de capitais fornecida.
-- Proibido usar o caractere pipe (|) dentro dos campos.
-- Caso Cometa: Cidade/Loja = Fortaleza, Estado = CEARÁ.
-- Caso Novo Atakarejo: Loja = Olinda, Cidade = Recife, Estado = PERNAMBUCO.
+✅ REGRAS OBRIGATÓRIAS
+✅ EMPRESA
+
+Nunca substituir supermercado pela campanha.
+
+Permitir apenas estes valores:
+
+Assaí Atacadista
+
+Atacadão
+
+Cometa Supermercados
+
+Frangolândia
+
+GBarbosa
+
+Atakarejo
+
+Novo Atakarejo
+
+Se o encarte tiver outra empresa → deixar em branco (nunca inventar).
+
+✅ DATA
+
+Data = “Data Início - Data Fim” (DD/MM/AAAA)
+
+Data Início e Data Fim também devem aparecer separadamente.
+
+✅ CAMPANHA
+
+Formato: Nome da campanha + dia da oferta + Estado
+
+Nunca colocar campanha dentro da coluna Empresa.
+
+✅ PRODUTO
+
+Sem referência/código (ex.: “cx”, “ref”, SKU, código interno)
+
+Se o nome estiver incompleto, não inventar.
+
+✅ MEDIDA
+
+Detectar apenas as unidades:
+
+g, mg, kg, litro, cm, metro
+(se não houver medida, deixar vazio)
+
+✅ QUANTIDADE
+
+1 quando for item unitário.
+
+Se for pack/kit/leve X/caixa → usar o número total de unidades.
+
+✅ LOJA (IMPORTANTE)
+
+Deve conter todas as CIDADES onde o encarte atua
+
+Separar múltiplas cidades com "; "
+
+Sempre com acentuação e ortografia correta:
+
+Primeira letra maiúscula, restante minúscula
+
+Ex.: São Luís; Imperatriz; Bacabal; Maceió; Arapiraca
+
+✅ CIDADE (IMPORTANTE)
+
+Deve ser apenas a cidade padrão do estado, mesmo que haja várias lojas:
+
+ESTADO (MAIÚSCULO)	Cidade padrão (capitalizada corretamente)
+MARANHÃO	São Luís
+CEARÁ	Fortaleza
+PARÁ	Belém
+PERNAMBUCO	Recife
+ALAGOAS	Maceió
+SERGIPE	Aracaju
+BAHIA	Salvador
+PIAUÍ	Teresina
+PARAÍBA	João Pessoa
+✅ ESTADO
+
+Nome por extenso e EM MAIÚSCULAS
+
+Ex.: MARANHÃO, CEARÁ, PARÁ, PERNAMBUCO, ALAGOAS, SERGIPE, BAHIA…
+
+✅ PADRÕES GERAIS
+
+Nunca duplicar itens
+
+Não inventar dados — se não estiver no encarte, deixar em branco
+
+Corrigir acentos, erros de OCR e números
+
+Extrair somente o que existe na imagem
 """
 
+# Extensões de arquivo 
+VALID_EXTENSIONS = ('.jpeg', '.jpg', '.png', '.pdf')
+BATCH_SIZE = 1
+all_markdown_results = []
+all_dataframes = [] # Novo, para armazenar os DataFrames
+
 def parse_markdown_table(markdown_text):
-    COLUMNS = [
-        "Empresa", "Data", "Data Início", "Data Fim", "Campanha", 
-        "Categoria do Produto", "Produto", "Medida", "Quantidade", 
-        "Preço", "App", "Loja", "Cidade", "Estado"
-    ]
+    """
+    Analisa a string de tabela Markdown e a converte em um DataFrame do pandas.
+    """
     try:
-        lines = markdown_text.strip().split('\n')
-        data_lines = [line for line in lines if line.strip().startswith('|')]
-        if len(data_lines) < 3: return None
+        # A tabela Markdown é lida como CSV com separador |
+        # Usamos io.StringIO para tratar a string como um arquivo
+        data = io.StringIO(markdown_text)
         
-        cleaned_data = '\n'.join(data_lines[2:])
-        df = pd.read_csv(io.StringIO(cleaned_data), sep='|', skipinitialspace=True, header=None, engine='python')
-        df = df.iloc[:, 1:-1] # Remove bordas vazias
+        # Lê a tabela, ignorando a primeira linha (cabeçalho) e a segunda linha (separador Markdown |---|)
+        # O cabeçalho real é inferido pelas colunas.
+        df = pd.read_csv(data, sep='|', skiprows=[2], skipinitialspace=True)
         
-        if df.shape[1] != len(COLUMNS):
-            if df.shape[1] > len(COLUMNS):
-                df = df.iloc[:, :len(COLUMNS)]
-            else:
-                while df.shape[1] < len(COLUMNS):
-                    df[f'extra_{df.shape[1]}'] = None
+        # Limpa o DataFrame
+        # 1. Remove espaços em branco antes e depois dos nomes das colunas
+        df.columns = df.columns.str.strip()
+        # 2. Remove a primeira e a última coluna (que geralmente são vazias devido ao formato |col1|col2|)
+        df = df.iloc[:, 1:-1]
         
-        df.columns = COLUMNS
-        return df.dropna(how='all')
+        # 3. Remove linhas que são todas NaN (podem ser linhas vazias residuais)
+        df.dropna(how='all', inplace=True)
+        
+        return df
     except Exception as e:
-        print(f"Erro no parse: {e}")
+        print(f"AVISO: Não foi possível converter a tabela Markdown em DataFrame. Erro: {e}")
         return None
 
-def process_single_file(file_path):
-    file_name = os.path.basename(file_path)
-    
-    for i, api_key in enumerate(API_KEY_LIST):
-        key_label = f"Chave #{i+1}"
-        client = genai.Client(api_key=api_key)
-        uploaded_file = None
-
-        try:
-            print(f"[THREAD] Tentando {file_name} com {key_label}...")
-            # 'file' é o argumento correto para o caminho na SDK google-genai
-            uploaded_file = client.files.upload(file=file_path)
-            
-            # Aguarda breve processamento do arquivo no servidor
-            time.sleep(1)
-
-            response = client.models.generate_content(
-                model=MODEL_NAME,
-                contents=[uploaded_file, PROMPT_TEXT],
-                config=types.GenerateContentConfig(safety_settings=safety_settings_list)
-            )
-            
-            df = parse_markdown_table(response.text)
-            if df is not None:
-                print(f"[THREAD] SUCESSO: {file_name}")
-                return df
-
-        except Exception as e:
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                print(f"[THREAD] Limite atingido na {key_label}. Alternando...")
-                time.sleep(5)
-                continue
-            else:
-                print(f"[THREAD] Erro em {file_name} ({key_label}): {e}")
-                continue
-        finally:
-            if uploaded_file:
-                try: client.files.delete(name=uploaded_file.name)
-                except: pass
-
-    print(f"[THREAD] FALHA TOTAL: {file_name}")
-    return None
-
-def main():
-    # Extração de Zips
-    zip_files = glob.glob(os.path.join(artifact_folder, "**", "*.zip"), recursive=True)
-    for zip_path in zip_files:
-        try:
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(os.path.dirname(zip_path))
-        except Exception as e:
-            print(f"Erro no zip {zip_path}: {e}")
-
-    # Coleta de Arquivos
-    all_paths = []
-    for root, _, files in os.walk(artifact_folder):
-        for f in files:
-            if f.lower().endswith(VALID_EXTENSIONS):
-                all_paths.append(os.path.join(root, f))
-
-    if not all_paths:
-        print("Nenhum arquivo para processar.")
+def save_dataframes_to_excel(dataframes, output_filename="gemini_resultados_compilados.xlsx"):
+    """
+    Compila todos os DataFrames em um único arquivo XLSX.
+    """
+    if not dataframes:
+        print("Nenhum DataFrame para salvar.")
         return
 
-    print(f"Iniciando processamento de {len(all_paths)} arquivos...")
-    results = []
-    with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-        future_to_file = {executor.submit(process_single_file, p): p for p in all_paths}
-        for future in as_completed(future_to_file):
-            res = future.result()
-            if res is not None:
-                results.append(res)
+    try:
+        # Concatenar todos os DataFrames em um único
+        final_df = pd.concat(dataframes, ignore_index=True)
+        
+        # Salva em XLSX
+        final_df.to_excel(output_filename, index=False, engine='openpyxl')
+        
+        print(f"SUCESSO!")
+        print(f"Todos os arquivos foram processados.")
+        print(f"Resultado salvo em: {output_filename}")
+    except Exception as e:
+        print(f"ERRO ao salvar o arquivo final XLSX: {e}")
 
-    if results:
-        final_df = pd.concat(results, ignore_index=True)
-        output = "gemini_resultados_compilados.xlsx"
-        final_df.to_excel(output, index=False)
-        print(f"\nConcluído! Resultado salvo em: {output}")
+def process_files():
+    """
+    Função principal para executar todo o fluxo de trabalho.
+    """
+    
+    # 2. Extrair todos os Zips
+    print(f"Procurando por arquivos .zip em {artifact_folder}...")
+    zip_pattern = os.path.join(artifact_folder, "**", "*.zip")
+    zip_files = glob.glob(zip_pattern, recursive=True)
+
+    if not zip_files:
+        print("Nenhum arquivo .zip encontrado. Verificando arquivos existentes...")
     else:
-        print("\nNenhum dado extraído.")
+        print(f"Encontrados {len(zip_files)} arquivos .zip. Extraindo...")
+        for zip_path in zip_files:
+            try:
+                extract_directory = os.path.dirname(zip_path)
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_directory)
+                print(f"Extraído: {zip_path} -> {extract_directory}")
+            except zipfile.BadZipFile:
+                print(f"Erro: {zip_path} não é um arquivo zip válido ou está corrompido.")
+            except Exception as e:
+                print(f"Erro ao extrair {zip_path}: {e}")
+        print("Extração de Zips concluída.\n")
+
+    print("Iniciando varredura das pastas de supermercados...")
+    
+    for root, dirs, files in os.walk(artifact_folder, topdown=False):
+        
+        if not dirs and files and root != artifact_folder:
+            
+            file_paths_to_process = [
+                os.path.join(root, f) for f in files if f.lower().endswith(VALID_EXTENSIONS)
+            ]
+
+            if not file_paths_to_process:
+                continue 
+
+            print(f"--- Processando Diretório: {root} ---")
+            print(f"Encontrados {len(file_paths_to_process)} arquivos válidos.")
+
+            for i in range(0, len(file_paths_to_process), BATCH_SIZE):
+                batch_paths = file_paths_to_process[i : i + BATCH_SIZE]
+                print(f"  Processando lote {i//BATCH_SIZE + 1} ({len(batch_paths)} arquivos)...")
+                time.sleep(1)
+
+                uploaded_files = []
+                prompt_payload = []
+
+                for path in batch_paths:
+                    try:
+                        print(f"    Subindo arquivo: {os.path.basename(path)}") 
+                        file = genai.upload_file(path=path)
+                        uploaded_files.append(file)
+                        time.sleep(1)
+                    except Exception as e:
+                        print(f"    ERRO ao subir {path}: {e}")
+                
+                if not uploaded_files:
+                    print("    Nenhum arquivo foi upado com sucesso neste lote. Pulando.")
+                    continue
+
+                prompt_payload = [
+                    f"{len(uploaded_files)} arquivos anexados.",
+                    PROMPT_TEXT
+                ] + uploaded_files
+
+                try:
+                    print(f"    Enviando {len(uploaded_files)} arquivos para o Gemini...")
+                    response = model.generate_content(prompt_payload)
+                    
+                    # 💡 NOVO: Converte a resposta Markdown para DataFrame e armazena
+                    df = parse_markdown_table(response.text)
+                    if df is not None:
+                        all_dataframes.append(df)
+                        print(f"    Resposta recebida e convertida em DataFrame.")
+                    else:
+                        print(f"    Resposta recebida, mas falhou na conversão para DataFrame.")
+                    
+                except Exception as e:
+                    print(f"    ERRO ao chamar a API Gemini: {e}")
+                
+                finally:
+                    print("    Limpando arquivos do servidor Gemini...")
+                    for file in uploaded_files:
+                        try:
+                            time.sleep(1) # Pausa para evitar limite de taxa
+                            genai.delete_file(file.name)
+                        except Exception as e:
+                            print(f"    Erro ao deletar arquivo {file.name}: {e}")
+            
+            print(f"--- Diretório {root} concluído ---\n")
+
+    if not all_dataframes:
+        print("Nenhum resultado foi gerado pela API ou convertido para DataFrame.")
+    else:
+        # 💡 NOVO: Chamada para salvar em XLSX
+        save_dataframes_to_excel(all_dataframes)
+
 
 if __name__ == "__main__":
-    main()
+    # Verificação de dependências
+    try:
+        import pandas as pd
+        import openpyxl # openpyxl é o motor padrão para escrita de XLSX pelo pandas
+    except ImportError:
+        print("\n--- DEPENDÊNCIA FALTANDO ---")
+        print("Para salvar em XLSX, você precisa instalar pandas e openpyxl.")
+        print("Execute o comando:")
+        print("pip install pandas openpyxl")
+        exit()
+
+    try:
+        process_files()
+    except Exception as e:
+        print(f"Um erro inesperado e fatal ocorreu: {e}")
