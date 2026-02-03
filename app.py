@@ -2,18 +2,18 @@ import os
 import glob
 import zipfile
 import time
+import io
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types, errors # Import correto de erros
+from google.genai import types
 import pandas as pd
-import io
-import re 
-from concurrent.futures import ThreadPoolExecutor, as_completed 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 load_dotenv()
 
-# --- Configuração de Chaves ---
+# --- Configuração de Chaves e Variáveis de Ambiente ---
 API_KEY_LIST = []
 for key in ["GEMINI_API_KEY", "GEMINI_API_KEY_BACKUP_01", "GEMINI_API_KEY_BACKUP_02"]:
     val = os.environ.get(key)
@@ -21,12 +21,15 @@ for key in ["GEMINI_API_KEY", "GEMINI_API_KEY_BACKUP_01", "GEMINI_API_KEY_BACKUP
         API_KEY_LIST.append(val)
 
 if not API_KEY_LIST:
-    print("Erro: Nenhuma chave de API encontrada.")
+    print("Erro: Nenhuma chave de API encontrada nas variáveis de ambiente.")
     exit()
 
 artifact_folder = os.environ.get("ARTIFACT_FOLDER", "./workflow-github-action")
+MODEL_NAME = 'gemini-2.0-flash'  # Versão estável e rápida
+MAX_THREADS = 8 
+VALID_EXTENSIONS = ('.jpeg', '.jpg', '.png', '.pdf')
 
-# --- Configurações de Segurança Corrigidas ---
+# --- Configurações de Segurança ---
 safety_settings_list = [
     types.SafetySetting(
         category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -46,17 +49,18 @@ safety_settings_list = [
     ),
 ]
 
-MODEL_NAME = 'gemini-2.0-flash' # Verifique se sua cota permite o 2.5, o padrão atual é 2.0 ou 1.5
-
 PROMPT_TEXT = """
-Transforme o PDF/PNG/JPEG em tabela Markdown e XLSX.
-Colunas: Empresa, Data, Data Início, Data Fim, Campanha, Categoria do Produto, Produto, Medida, Quantidade, Preço, App, Loja, Cidade, Estado.
-(Regras de negócio mantidas conforme seu prompt original...)
-"""
+Transforme o PDF/PNG/JPEG em tabela Markdown (para copiar no Excel) e XLSX, usando esta ordem EXATA de colunas:
+Empresa, Data, Data Início, Data Fim, Campanha, Categoria do Produto, Produto, Medida, Quantidade, Preço, App, Loja, Cidade, Estado.
 
-VALID_EXTENSIONS = ('.jpeg', '.jpg', '.png', '.pdf')
-MAX_THREADS = 8 
-all_dataframes = [] 
+✅ REGRAS OBRIGATÓRIAS:
+- Empresa: Apenas Assaí Atacadista, Atacadão, Cometa Supermercados, Frangolândia, GBarbosa, Atakarejo, Novo Atakarejo.
+- Loja: Cidades onde o encarte atua (separadas por ;).
+- Cidade/Estado: Conforme tabela de capitais fornecida.
+- Proibido usar o caractere pipe (|) dentro dos campos.
+- Caso Cometa: Cidade/Loja = Fortaleza, Estado = CEARÁ.
+- Caso Novo Atakarejo: Loja = Olinda, Cidade = Recife, Estado = PERNAMBUCO.
+"""
 
 def parse_markdown_table(markdown_text):
     COLUMNS = [
@@ -66,17 +70,19 @@ def parse_markdown_table(markdown_text):
     ]
     try:
         lines = markdown_text.strip().split('\n')
-        data_lines = [line for line in lines if line.strip().startswith('|')][2:]
-        if not data_lines: return None
+        data_lines = [line for line in lines if line.strip().startswith('|')]
+        if len(data_lines) < 3: return None
         
-        cleaned_data = '\n'.join(data_lines)
+        cleaned_data = '\n'.join(data_lines[2:])
         df = pd.read_csv(io.StringIO(cleaned_data), sep='|', skipinitialspace=True, header=None, engine='python')
-        df = df.iloc[:, 1:-1]
+        df = df.iloc[:, 1:-1] # Remove bordas vazias
         
-        # Ajuste de colunas
         if df.shape[1] != len(COLUMNS):
-            df = df.iloc[:, :len(COLUMNS)] if df.shape[1] > len(COLUMNS) else df
-            while df.shape[1] < len(COLUMNS): df[f'extra_{df.shape[1]}'] = None
+            if df.shape[1] > len(COLUMNS):
+                df = df.iloc[:, :len(COLUMNS)]
+            else:
+                while df.shape[1] < len(COLUMNS):
+                    df[f'extra_{df.shape[1]}'] = None
         
         df.columns = COLUMNS
         return df.dropna(how='all')
@@ -85,73 +91,85 @@ def parse_markdown_table(markdown_text):
         return None
 
 def process_single_file(file_path):
-    print(f"[THREAD] Iniciando: {os.path.basename(file_path)}")
+    file_name = os.path.basename(file_path)
     
-    # Loop de failover por arquivo
     for i, api_key in enumerate(API_KEY_LIST):
         key_label = f"Chave #{i+1}"
         client = genai.Client(api_key=api_key)
         uploaded_file = None
 
         try:
-            # 1. Upload
-            uploaded_file = client.files.upload(path=file_path)
+            print(f"[THREAD] Tentando {file_name} com {key_label}...")
+            # 'file' é o argumento correto para o caminho na SDK google-genai
+            uploaded_file = client.files.upload(file=file_path)
             
-            # 2. Geração
+            # Aguarda breve processamento do arquivo no servidor
+            time.sleep(1)
+
             response = client.models.generate_content(
                 model=MODEL_NAME,
-                contents=[PROMPT_TEXT, uploaded_file],
+                contents=[uploaded_file, PROMPT_TEXT],
                 config=types.GenerateContentConfig(safety_settings=safety_settings_list)
             )
             
-            # 3. Parse
             df = parse_markdown_table(response.text)
             if df is not None:
-                print(f"[THREAD] SUCESSO: {os.path.basename(file_path)} com {key_label}")
-                # Limpeza antes de retornar
-                client.files.delete(name=uploaded_file.name)
+                print(f"[THREAD] SUCESSO: {file_name}")
                 return df
 
         except Exception as e:
-            # Tratamento de Cota (429)
             if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                print(f"[THREAD] Cota excedida na {key_label}. Tentando próxima...")
-                time.sleep(10)
+                print(f"[THREAD] Limite atingido na {key_label}. Alternando...")
+                time.sleep(5)
                 continue
             else:
-                print(f"[THREAD] Erro crítico na {key_label} para {os.path.basename(file_path)}: {e}")
-                break # Sai do loop de chaves para este arquivo se for erro de lógica/arquivo
-        
+                print(f"[THREAD] Erro em {file_name} ({key_label}): {e}")
+                continue
         finally:
             if uploaded_file:
                 try: client.files.delete(name=uploaded_file.name)
                 except: pass
 
+    print(f"[THREAD] FALHA TOTAL: {file_name}")
     return None
 
-def process_files():
-    # ... (Lógica de zip e busca de arquivos mantida) ...
-    all_file_paths = []
+def main():
+    # Extração de Zips
+    zip_files = glob.glob(os.path.join(artifact_folder, "**", "*.zip"), recursive=True)
+    for zip_path in zip_files:
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(os.path.dirname(zip_path))
+        except Exception as e:
+            print(f"Erro no zip {zip_path}: {e}")
+
+    # Coleta de Arquivos
+    all_paths = []
     for root, _, files in os.walk(artifact_folder):
         for f in files:
             if f.lower().endswith(VALID_EXTENSIONS):
-                all_file_paths.append(os.path.join(root, f))
+                all_paths.append(os.path.join(root, f))
 
-    if not all_file_paths:
-        print("Nenhum arquivo encontrado.")
+    if not all_paths:
+        print("Nenhum arquivo para processar.")
         return
 
-    print(f"Processando {len(all_file_paths)} arquivos...")
+    print(f"Iniciando processamento de {len(all_paths)} arquivos...")
+    results = []
     with ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-        futures = {executor.submit(process_single_file, path): path for path in all_file_paths}
-        for future in as_completed(futures):
+        future_to_file = {executor.submit(process_single_file, p): p for p in all_paths}
+        for future in as_completed(future_to_file):
             res = future.result()
-            if res is not None: all_dataframes.append(res)
+            if res is not None:
+                results.append(res)
 
-    if all_dataframes:
-        final_df = pd.concat(all_dataframes, ignore_index=True)
-        final_df.to_excel("gemini_resultados_compilados.xlsx", index=False)
-        print("Arquivo Excel gerado com sucesso!")
+    if results:
+        final_df = pd.concat(results, ignore_index=True)
+        output = "gemini_resultados_compilados.xlsx"
+        final_df.to_excel(output, index=False)
+        print(f"\nConcluído! Resultado salvo em: {output}")
+    else:
+        print("\nNenhum dado extraído.")
 
 if __name__ == "__main__":
-    process_files()
+    main()
