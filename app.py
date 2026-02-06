@@ -11,8 +11,6 @@ import io
 
 load_dotenv()
 
-# --- 1. Configuração de Variáveis e Limites ---
-# Use uma lista de chaves para failover automático
 API_KEYS = [
     os.environ.get("GEMINI_API_KEY"),
     os.environ.get("GEMINI_API_KEY_BACKUP_01"),
@@ -21,9 +19,8 @@ API_KEYS = [
 API_KEYS = [k for k in API_KEYS if k] # Remove None
 
 artifact_folder = os.environ.get("ARTIFACT_FOLDER", "./workflow-github-action")
-MODEL_NAME = 'gemini-2.0-flash' # O 2.0 é mais rápido e estável que o 2.5 experimental
+MODEL_NAME = 'gemini-2.5-flash' 
 
-# --- 2. Lógica de Segurança e Prompt (Mantidos do seu original) ---
 safety_settings_list = [
     SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.BLOCK_NONE),
     SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.BLOCK_NONE),
